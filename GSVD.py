@@ -42,7 +42,7 @@ print(f"Using device: {DEVICE}")
 # Use arguments parsed from CLI
 model_name = args.model_name
 GRADIENT_ITERS = args.gradient_iters
-MATRIX_ITERS = args.matrix_iters # Primarily for filename consistency as per original code
+MATRIX_ITERS = args.matrix_iters
 RATIO = args.ratio
 CALIB_SAMPLES = args.calib_samples
 BATCH_SIZE = args.batch_size
