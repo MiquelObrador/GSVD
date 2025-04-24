@@ -10,13 +10,13 @@ parser = argparse.ArgumentParser(
     description="Evaluate a (G)SVD-compressed LLM on Wikitext and compute perplexity"
 )
 parser.add_argument(
-    "--base_model",
+    "--base-model",
     type=str,
     default="huggyllama/llama-7b",
     help="HuggingFace model identifier for the original (uncompressed) model",
 )
 parser.add_argument(
-    "--model_path",
+    "--model-path",
     type=str,
     required=True,
     help=(
@@ -25,7 +25,7 @@ parser.add_argument(
     ),
 )
 parser.add_argument(
-    "--batch_size",
+    "--batch-size",
     type=int,
     default=8,
     help="Batch size for evaluation on Wikitext",
@@ -67,8 +67,7 @@ model.half().to(DEVICE).eval()
 
 # Load dataset
 loader = load_wikitext(
-    tokenizer, seq_len=SEQ_LEN, batch_size=args.batch_size
-)
+    tokenizer, seq_len=SEQ_LEN, batch_size=args.batch_size)
 
 # Evaluate perplexity
 nlls = []
@@ -94,7 +93,7 @@ ppl = int(ppl) if ppl > 1000 else ppl
 print(f"Perplexity: {ppl}")
 
 # Save the perplexity
-ppl_path = re.sub(r"\.pt$", "", args.model_path) + "_ppl.txt"
+ppl_path = re.sub(r"\.pt$", "", args.model_path) + "_pplEvaluation.txt"
 with open(ppl_path, "w") as f:
     f.write(str(ppl))
 print(f"Saved perplexity to {ppl_path}")
