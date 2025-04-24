@@ -3,3 +3,5 @@ results/
 test.ipynb
 __pycache__/
 *.pyc
+matrixes/
+**/matrixes/
