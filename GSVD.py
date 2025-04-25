@@ -179,7 +179,7 @@ for name, module in tqdm(list(model.named_modules()), desc="Modules"):
             else:
                 initial_lr = 0.00001
             
-            optimizer = torch.optim.AdamW(new_module.parameters(), lr=initial_lr, weight_decay=0.001)
+            optimizer = torch.optim.Adam(new_module.parameters(), lr=initial_lr)
             scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=GRADIENT_ITERS, eta_min=0.00001)
             pbar = tqdm(range(GRADIENT_ITERS), desc=f"Optimizing {name}", leave=False)
             for _ in pbar:
