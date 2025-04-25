@@ -31,20 +31,6 @@ class ChannelScaling(nn.Module):
 
         x_norm = x / torch.sqrt(var.view(1, 1, -1) + self.eps) # Normalize the input by dividing by the standard deviation
         return self.gamma.view(1, 1, -1) * x_norm  # Scale the normalized input by gamma
-    
-class GaussianNoise(nn.Module):
-    """
-    Add Gaussian noise to the input tensor.
-    """
-    def __init__(self, std=0.1):
-        super(GaussianNoise, self).__init__()
-        self.std = std
-
-    def forward(self, x):
-        if self.training:
-            noise = torch.randn_like(x) * self.std
-            return x + noise
-        return x
         
 class SVDLinearLayer(nn.Module):
     def __init__(self, weights, truncate, bias=None, data=None, from_savepoint=False):
@@ -111,8 +97,6 @@ class SVDLinearLayer(nn.Module):
             self.u_linear.bias.data.copy_(bias)
         self.u_linear.weight.data.copy_(u_parameter)
         
-        self.gaussian_noise = GaussianNoise(std=0.005)
-        
         del weights, U, S, Vt, diag_s, diag_norm1, diag_norm2, data_var, data, device, u_parameter, vt_parameter
         
         torch.cuda.empty_cache()
@@ -128,8 +112,6 @@ class SVDLinearLayer(nn.Module):
         
         if x.dim() == 2: # Add batch dimension if missing.
             x = x.unsqueeze(0)
-            
-        x = self.gaussian_noise(x)
             
         x = self.normalization1(x)
         
