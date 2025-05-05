@@ -5,6 +5,8 @@ from torch.utils.data.dataset import Dataset
 import math
 import os
 
+random.seed(42)
+
 def replace_module_by_name(root_module, module_full_name, new_module):
     """
     Replaces a module inside root_module given its full name (e.g. "layer1.conv").

@@ -5,5 +5,5 @@
 python GSVD.py \
     --gradient-iters 500 \
     --matrix-iters 1 \
-    --ratio 0.6 \
+    --ratio 0.4 \
     --calib-samples 256 \
