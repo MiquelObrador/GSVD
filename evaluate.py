@@ -30,6 +30,15 @@ parser.add_argument(
     default=8,
     help="Batch size for evaluation on Wikitext",
 )
+
+parser.add_argument(
+    "--q-bits",
+    type=int,
+    default=-100,
+    choices=[4, 8],
+    help="Quantization bit-width (4 or 8). Default is -100, which means no quantization.",
+)
+
 args = parser.parse_args()
 
 # Extract ratio from model_path (e.g., '_r0.8')
@@ -59,7 +68,10 @@ SEQ_LEN = model.config.max_position_embeddings
 
 # Load SVD-compressed weights
 print(f"Applying SVD compression with ratio {args.ratio} from {args.model_path}")
-model = SVDModel.load_model(model, ratio=args.ratio, model_path=args.model_path)
+model = SVDModel.load_model(model, ratio=args.ratio, 
+                            model_path=args.model_path, 
+                            quantization_bits=None if args.q_bits == -100 
+                            else args.q_bits)
 
 # Prepare for evaluation
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
