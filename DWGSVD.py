@@ -1,11 +1,13 @@
 import torch
 from torch import nn
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from utils import replace_module_by_name, load_wikitext, get_ratios, get_truncate, get_unique_path
+from utils import replace_module_by_name, load_wikitext, get_ratios, get_truncate, get_unique_path, allocate_compression
 from modules import SVDLinearLayer
 from tqdm import tqdm
 import os
 import argparse
+import pickle
+from collections import OrderedDict
 import csv
 
 # --- Argument Parsing ---
@@ -26,6 +28,8 @@ parser.add_argument('--output-dir-base', type=str, default="results",
                     help='Base directory to save results (default: results)')
 parser.add_argument('--seed', type=int, default=42,
                     help='Random seed for reproducibility (default: 42)')
+parser.add_argument('--dynamic-delta', type=float, default=0.10,
+                    help='Dynamic delta for compression ratio allocation (default: 0.10)')
 
 args = parser.parse_args()
 
@@ -47,6 +51,7 @@ MATRIX_ITERS = args.matrix_iters
 RATIO = args.ratio
 CALIB_SAMPLES = args.calib_samples
 BATCH_SIZE = args.batch_size
+DR_DELTA = args.dynamic_delta
 
 output_dir = f"{args.output_dir_base}/{model_name.split('/')[-1]}"
 
@@ -72,6 +77,30 @@ print(f"Loading model: {model_name}...")
 model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.float16)
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 print("Model loaded.")
+
+# Create a dict that has the parameters per layer
+p = OrderedDict()
+for name, module in model.named_modules():
+    if name == "lm_head":
+        continue
+    if isinstance(module, nn.Linear):
+        params = module.named_parameters()
+        for param_name, param in params:
+            if param_name == "weight":
+                p[name] = param.numel()
+                break
+            
+with open("grads/llama7b_weights.pkl", "rb") as f:
+    grads = pickle.load(f)
+    
+del grads["lm_head"]
+
+# Get the mean of the grads
+g = OrderedDict()
+for name, grad in grads.items():
+    g[name] = grad.mean(dim=0).item()
+    
+ratios_dict = allocate_compression(g, p, RATIO, DR_DELTA)
 
 og_num_params = sum(p.numel() for p in model.parameters())
 print("Number of parameters before GSVD compression:", og_num_params)
@@ -120,12 +149,21 @@ for name, module in model.named_modules():
 model.to("cpu")
 torch.cuda.empty_cache()
 
-class FrobeniusLoss(nn.Module):
-    def __init__(self):
-        super(FrobeniusLoss, self).__init__()
+class WeightedFrobeniusLoss(nn.Module):
+    def __init__(self, feature_weights: torch.Tensor):
+        """
+        feature_weights: 1D tensor of shape (num_features,), with values in [0,1]
+        """
+        super().__init__()
+        # make sure it's the right shape and on the right device
+        self.register_buffer('w', feature_weights.view(1, -1))
 
-    def forward(self, inputs, targets):
-        return torch.norm(inputs.view(-1) - targets.view(-1), p='fro')
+    def forward(self, inputs: torch.Tensor, targets: torch.Tensor):
+        # inputs, targets: (batch_size, num_features)
+        diff = inputs - targets                     # (B, F)
+        weighted_diff = diff * self.w                # broadcast w over batch
+        # flatten and take Frobenius (i.e. ℓ₂) norm
+        return torch.norm(weighted_diff.view(-1), p='fro')
 
 losses_per_module = {}
 
@@ -137,7 +175,16 @@ for name, module in tqdm(list(model.named_modules()), desc="Modules"):
             continue
         torch.cuda.empty_cache()
         
-        ratios = get_ratios(RATIO, MATRIX_ITERS)
+        layer_ratio = ratios_dict[name]
+        
+        if layer_ratio > 0.99:
+            print(f"Skipping {name} with ratio {layer_ratio:.2f}")
+            continue
+        
+        ratios = get_ratios(layer_ratio, MATRIX_ITERS)
+        
+        importance = grads[name]
+        importance = importance.to(DEVICE).float()
         
         W = module.weight.data.clone().to(DEVICE).float()
         b = module.bias.data.clone().to(DEVICE).float() if module.bias is not None else None
@@ -152,7 +199,7 @@ for name, module in tqdm(list(model.named_modules()), desc="Modules"):
         
         for i, ratio in enumerate(ratios):
             
-            loss_fn = FrobeniusLoss()
+            loss_fn = WeightedFrobeniusLoss(importance)
             
             print(f"Optimizing {name} with ratio {ratio:.2f}")
             
@@ -207,7 +254,7 @@ for name, module in tqdm(list(model.named_modules()), desc="Modules"):
         replace_module_by_name(model, name, new_module)
         loss_delta = final_loss - initial_loss
         losses_per_module[name] = (loss_delta, initial_loss, final_loss)
-        del W, b, pre_act, post_act, optimizer, loss_fn, new_module, initial_loss, final_loss, loss
+        del W, b, pre_act, post_act, optimizer, loss_fn, new_module, initial_loss, final_loss, loss, loss_delta, output_pred, starting_loss, importance
         torch.cuda.empty_cache()
         
 model.to("cpu")
@@ -215,10 +262,10 @@ torch.cuda.empty_cache()
         
 # Save the modified model, the name should contain the model name, the compression ratio, the number of gradient iterations, teh calibration samples, and the matrix iteration
 
-filename = f"gsvd_{model_name.split('/')[-1]}_r{RATIO}_g{GRADIENT_ITERS}_c{CALIB_SAMPLES}_m{MATRIX_ITERS}"
-save_path = get_unique_path(os.path.join(output_dir, filename + ".pt"))
-losses_path = get_unique_path(os.path.join(output_dir, filename + "_losses.csv"))
-ppl_path = get_unique_path(os.path.join(output_dir, filename + "_ppl.txt"))
+filename = f"gsvd_{model_name.split('/')[-1]}_r{RATIO}_g{GRADIENT_ITERS}_c{CALIB_SAMPLES}_m{MATRIX_ITERS}_d{DR_DELTA}"
+save_path = get_unique_path(os.path.join(output_dir, filename + "_w_dr.pt"))
+losses_path = get_unique_path(os.path.join(output_dir, filename + "_losses_w_dr.csv"))
+ppl_path = get_unique_path(os.path.join(output_dir, filename + "_ppl_w.txt"))
 
 torch.save(model.state_dict(), save_path)
 print(f"Model saved to {save_path}")

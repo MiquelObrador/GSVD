@@ -4,6 +4,8 @@ from datasets import load_dataset
 from torch.utils.data.dataset import Dataset
 import math
 import os
+from collections import OrderedDict
+from typing import Tuple
 
 random.seed(42)
 
@@ -71,3 +73,74 @@ def get_unique_path(path: str) -> str:
         counter += 1
         new_path = f"{base}_{counter}{ext}"
     return new_path
+
+def allocate_compression(
+    g: OrderedDict[str, float],
+    p: OrderedDict[str, int],
+    keep_frac: float = 0.6,
+    delta: float = 0.1,
+) -> OrderedDict[str, float]:
+    """
+    Distribute a global keep-budget among layers, but force each layer's
+    keep-ratio r_i = keep_i / p_i to lie in [lower, upper].
+
+    Args:
+        g: per-layer mean gradient magnitudes (OrderedDict[layer_name -> float])
+        p: per-layer parameter counts      (OrderedDict[layer_name -> int])
+        keep_frac: overall fraction of params to keep (0 < keep_frac <= 1)
+        delta: fraction of lower/upper bounds to use for clamping
+        (0 < delta <= 1)
+
+    Returns:
+        keep_ratios: an OrderedDict[layer_name -> final keep-ratio in [lower, upper]]
+    """
+    # total and target budget
+    P_total = sum(p.values())
+    P_keep  = keep_frac * P_total
+    
+    # lower and upper bounds
+    lower = keep_frac - delta
+    upper = keep_frac + delta
+
+    # active set and allocation placeholders
+    S = set(g.keys())
+    keep_counts = OrderedDict((k, 0.0) for k in g)
+
+    # iterative clamp loop
+    while True:
+        # 1) importance weights (pure g*p here — you could soften if desired)
+        w = {k: g[k] * p[k] for k in S}
+        W = sum(w.values())
+
+        # 2) tentative counts for active layers
+        k_tent = {k: (w[k] / W) * P_keep for k in S}
+
+        # 3) detect layers violating bounds
+        to_clamp_low  = [k for k, v in k_tent.items() if v < lower * p[k]]
+        to_clamp_high = [k for k, v in k_tent.items() if v > upper * p[k]]
+
+        # if no clamping needed, accept all
+        if not to_clamp_low and not to_clamp_high:
+            for k, v in k_tent.items():
+                keep_counts[k] = v
+            break
+
+        # otherwise clamp low-bound layers
+        for k in to_clamp_low:
+            clamp_val = lower * p[k]
+            keep_counts[k] = clamp_val
+            P_keep -= clamp_val        # subtract exactly what we're committing
+            S.remove(k)
+
+        # clamp high-bound layers
+        for k in to_clamp_high:
+            clamp_val = upper * p[k]
+            keep_counts[k] = clamp_val
+            P_keep -= clamp_val
+            S.remove(k)
+
+    # build final ratios
+    keep_ratios = OrderedDict(
+        (k, keep_counts[k] / p[k]) for k in g.keys()
+    )
+    return keep_ratios

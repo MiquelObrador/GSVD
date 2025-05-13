@@ -7,6 +7,7 @@ from tqdm import tqdm
 import os
 import argparse
 import pickle
+import csv
 
 # --- Argument Parsing ---
 parser = argparse.ArgumentParser(description="Compress a Hugging Face model using GSVD.")
@@ -232,16 +233,19 @@ torch.cuda.empty_cache()
 
 filename = f"gsvd_{model_name.split('/')[-1]}_r{RATIO}_g{GRADIENT_ITERS}_c{CALIB_SAMPLES}_m{MATRIX_ITERS}"
 save_path = get_unique_path(os.path.join(output_dir, filename + "_w.pt"))
-losses_path = get_unique_path(os.path.join(output_dir, filename + "_losses_w.txt"))
+losses_path = get_unique_path(os.path.join(output_dir, filename + "_losses_w.csv"))
 ppl_path = get_unique_path(os.path.join(output_dir, filename + "_ppl_w.txt"))
 
 torch.save(model.state_dict(), save_path)
 print(f"Model saved to {save_path}")
 
-with open(losses_path, "w") as f:
-    for module_name, loss_delta in losses_per_module.items():
-        f.write(f"{module_name}: {loss_delta}\n")
-print(f"Loss deltas saved to {losses_path}")
+# Save the losses to a csv file
+with open(losses_path, "w", newline='') as f:
+    writer = csv.writer(f)
+    writer.writerow(["MODULE","LOSS DELTA","INITIAL LOSS","FINAL LOSS"])
+    for name, (loss_delta, initial_loss, final_loss) in losses_per_module.items():
+        writer.writerow([name, loss_delta, initial_loss, final_loss])
+print(f"Losses saved to {losses_path}")
 
 # Calculate the ppl of the model
 
