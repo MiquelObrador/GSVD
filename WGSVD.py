@@ -136,7 +136,7 @@ class WeightedFrobeniusLoss(nn.Module):
     def forward(self, inputs: torch.Tensor, targets: torch.Tensor):
         # inputs, targets: (batch_size, num_features)
         diff = inputs - targets                     # (B, F)
-        weighted_diff = diff * self.w                # broadcast w over batch
+        weighted_diff = diff * self.w               # broadcast w over batch
         # flatten and take Frobenius (i.e. ℓ₂) norm
         return torch.norm(weighted_diff.view(-1), p='fro')
 

@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from utils import replace_module_by_name, load_wikitext, get_ratios, get_truncate, get_unique_path, allocate_compression
+from utils import *
 from modules import SVDLinearLayer
 from tqdm import tqdm
 import os
@@ -9,6 +9,7 @@ import argparse
 import pickle
 from collections import OrderedDict
 import csv
+import pandas as pd
 
 # --- Argument Parsing ---
 parser = argparse.ArgumentParser(description="Compress a Hugging Face model using GSVD.")
@@ -64,6 +65,7 @@ print(f"Calibration Samples: {CALIB_SAMPLES}")
 print(f"Calibration Batch Size: {BATCH_SIZE}")
 print(f"Output Directory: {output_dir}")
 print(f"Seed: {args.seed}")
+print(f"Dynamic Delta: {DR_DELTA}")
 print(f"--------------------")
 
 
@@ -99,8 +101,26 @@ del grads["lm_head"]
 g = OrderedDict()
 for name, grad in grads.items():
     g[name] = grad.mean(dim=0).item()
-    
-ratios_dict = allocate_compression(g, p, RATIO, DR_DELTA)
+
+# Load a csv file with the losses per ratio
+losses_df = pd.read_csv("results/llama-7b/gsvd_llama-7b_losses.csv")
+
+# Create and ordered dict with the slope for each module
+s = OrderedDict()
+for name, row in losses_df.iterrows():
+    module = row["MODULE"]
+    slope = calculate_loss_slope(losses_df, module, target_ratio=RATIO)
+    s[module] = slope
+
+ratios_dict = allocate_compression_slope(g, p, s,
+                                        keep_frac=RATIO,
+                                        delta=DR_DELTA,
+                                        alpha=0.3)
+
+# Print the ratios
+print("Ratios calculated per layer:")
+for name, ratio in ratios_dict.items():
+    print(f"{name}: {ratio:.2f}")
 
 og_num_params = sum(p.numel() for p in model.parameters())
 print("Number of parameters before GSVD compression:", og_num_params)
@@ -263,8 +283,8 @@ torch.cuda.empty_cache()
 # Save the modified model, the name should contain the model name, the compression ratio, the number of gradient iterations, teh calibration samples, and the matrix iteration
 
 filename = f"gsvd_{model_name.split('/')[-1]}_r{RATIO}_g{GRADIENT_ITERS}_c{CALIB_SAMPLES}_m{MATRIX_ITERS}_d{DR_DELTA}"
-save_path = get_unique_path(os.path.join(output_dir, filename + "_w_dr.pt"))
-losses_path = get_unique_path(os.path.join(output_dir, filename + "_losses_w_dr.csv"))
+save_path = get_unique_path(os.path.join(output_dir, filename + "_w.pt"))
+losses_path = get_unique_path(os.path.join(output_dir, filename + "_losses_w.csv"))
 ppl_path = get_unique_path(os.path.join(output_dir, filename + "_ppl_w.txt"))
 
 torch.save(model.state_dict(), save_path)

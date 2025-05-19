@@ -7,4 +7,4 @@ python DWGSVD.py \
     --matrix-iters 1 \
     --ratio 0.6 \
     --calib-samples 256 \
-    --dynamic-delta 0.12 \
+    --dynamic-delta 0.10 \

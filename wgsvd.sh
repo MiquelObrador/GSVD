@@ -7,3 +7,19 @@ python WGSVD.py \
     --matrix-iters 1 \
     --ratio 0.6 \
     --calib-samples 256 \
+
+# set -euo pipefail
+
+# # list of ratios to try, one by one
+# for ratio in 0.2 0.4 0.8; do
+#   echo "[$(date +'%Y-%m-%d %H:%M:%S')] Running WGSVD with --ratio $ratio"
+#   python WGSVD.py \
+#     --gradient-iters 500 \
+#     --matrix-iters 1 \
+#     --ratio "$ratio" \
+#     --calib-samples 256
+#   echo "[$(date +'%Y-%m-%d %H:%M:%S')] Finished ratio $ratio"
+#   echo "---------------------------------------------------------------"
+# done
+
+# echo "All jobs complete at $(date +'%Y-%m-%d %H:%M:%S')"
