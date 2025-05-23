@@ -8,3 +8,5 @@ matrixes/
 gradient_testing.ipynb
 grads/
 results/*
+datasets/
+notebooks/

@@ -111,11 +111,27 @@ for name, row in losses_df.iterrows():
     module = row["MODULE"]
     slope = calculate_loss_slope(losses_df, module, target_ratio=RATIO)
     s[module] = slope
+    
+filename = f"gsvd_{model_name.split('/')[-1]}_r{RATIO}_g{GRADIENT_ITERS}_c{CALIB_SAMPLES}_m{MATRIX_ITERS}_d{DR_DELTA}"
+save_path = get_unique_path(os.path.join(output_dir, filename + "_w.pt"))
+losses_path = get_unique_path(os.path.join(output_dir, filename + "_losses_w.csv"))
+ppl_path = get_unique_path(os.path.join(output_dir, filename + "_ppl_w.txt"))
+ratios_path = get_unique_path(os.path.join(output_dir, filename + "_ratios_dict_w.csv"))
 
 ratios_dict = allocate_compression_slope(g, p, s,
                                         keep_frac=RATIO,
                                         delta=DR_DELTA,
                                         alpha=0.3)
+
+# Save the ratios dict to a csv file if it doesn't exist
+if not os.path.exists(ratios_path):
+    with open(ratios_path, "w", newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(["MODULE", "RATIO"])
+        for name, ratio in ratios_dict.items():
+            writer.writerow([name, ratio])
+else:
+    print(f"Ratios file already exists: {ratios_path}")
 
 # Print the ratios
 print("Ratios calculated per layer:")
@@ -142,16 +158,13 @@ def hook(module, input, output):
     """
     # Move to CPU immediately to free GPU memory, clone to avoid modifying original tensor downstream
     current_pre_act = input[0].detach().cpu()
-    current_post_act = output.detach().cpu()
 
     # Ensure tensors are concatenated correctly, even if initial tensor is empty
     module.pre_act = torch.cat((module.pre_act, current_pre_act), dim=0) if module.pre_act.numel() != 0 else current_pre_act
-    module.post_act = torch.cat((module.post_act, current_post_act), dim=0) if module.post_act.numel() != 0 else current_post_act
     
 for name, module in model.named_modules():
     if isinstance(module, nn.Linear):
         module.pre_act = torch.empty(0).to(DEVICE)
-        module.post_act = torch.empty(0).to(DEVICE)
         module.register_forward_hook(hook)
         
 with torch.no_grad():
@@ -199,6 +212,7 @@ for name, module in tqdm(list(model.named_modules()), desc="Modules"):
         
         if layer_ratio > 0.99:
             print(f"Skipping {name} with ratio {layer_ratio:.2f}")
+            del module.pre_act
             continue
         
         ratios = get_ratios(layer_ratio, MATRIX_ITERS)
@@ -206,14 +220,17 @@ for name, module in tqdm(list(model.named_modules()), desc="Modules"):
         importance = grads[name]
         importance = importance.to(DEVICE).float()
         
+        module.to(DEVICE).float()
+        pre_act = module.pre_act.to(DEVICE).float()
+        with torch.no_grad():
+            post_act = module(pre_act).to(DEVICE).float()
+            
+        del module.pre_act
+        module.to("cpu")
+        torch.cuda.empty_cache()
+        
         W = module.weight.data.clone().to(DEVICE).float()
         b = module.bias.data.clone().to(DEVICE).float() if module.bias is not None else None
-        
-        pre_act = module.pre_act.to(DEVICE).float()
-        post_act = module.post_act.to(DEVICE).float()
-        
-        module.pre_act = torch.empty(0)
-        module.post_act = torch.empty(0)
         
         out_features, in_features = W.shape
         
@@ -282,11 +299,6 @@ torch.cuda.empty_cache()
         
 # Save the modified model, the name should contain the model name, the compression ratio, the number of gradient iterations, teh calibration samples, and the matrix iteration
 
-filename = f"gsvd_{model_name.split('/')[-1]}_r{RATIO}_g{GRADIENT_ITERS}_c{CALIB_SAMPLES}_m{MATRIX_ITERS}_d{DR_DELTA}"
-save_path = get_unique_path(os.path.join(output_dir, filename + "_w.pt"))
-losses_path = get_unique_path(os.path.join(output_dir, filename + "_losses_w.csv"))
-ppl_path = get_unique_path(os.path.join(output_dir, filename + "_ppl_w.txt"))
-
 torch.save(model.state_dict(), save_path)
 print(f"Model saved to {save_path}")
 
@@ -308,7 +320,7 @@ with torch.no_grad():
     BATCH_SIZE = 8
     SEQ_LEN = model.config.max_position_embeddings
     
-    loader = load_wikitext(tokenizer,
+    loader = load_eval_tokenized_dataset(tokenizer,
                             seq_len=SEQ_LEN,
                             batch_size=BATCH_SIZE)
     nlls = []

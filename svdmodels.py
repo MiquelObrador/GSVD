@@ -17,7 +17,10 @@ class SVDModel(nn.Module):
         return self.model(*args, **kwargs)
     
     @classmethod
-    def load_model(cls, model, ratio=0.6, model_path=None, quantization_bits=None):
+    def load_model(cls, model, ratio=0.6, 
+                   model_path=None, 
+                   quantization_bits=None, 
+                   ratios_dict=None):
         instance = cls(model, ratio)
         # Replace original modules with SVD modules
         for name, module in tqdm(model.named_modules(), desc="Replacing modules", total=len(list(model.named_modules()))):
@@ -30,6 +33,13 @@ class SVDModel(nn.Module):
                 b = module.bias.data if module.bias is not None else None
                 
                 out_features, in_features = W.shape
+                
+                if ratios_dict is not None:
+                    # Get the ratio for the current layer from the dictionary
+                    ratio = ratios_dict.get(name, ratio)
+                else:
+                    # Use the default ratio
+                    ratio = ratio
                 
                 low_rank = get_truncate(in_features, out_features, ratio)
                     

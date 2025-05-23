@@ -1,111 +1,223 @@
-import re
 import argparse
+import os
 import torch
+import torch.nn as nn
 from transformers import AutoModelForCausalLM, AutoTokenizer
+import numpy as np
 from tqdm import tqdm
+import json    
+
+
 from svdmodels import SVDModel
-from utils import load_wikitext
+from utils import load_eval_tokenized_dataset
 
-parser = argparse.ArgumentParser(
-    description="Evaluate a (G)SVD-compressed LLM on Wikitext and compute perplexity"
-)
-parser.add_argument(
-    "--base-model",
-    type=str,
-    default="huggyllama/llama-7b",
-    help="HuggingFace model identifier for the original (uncompressed) model",
-)
-parser.add_argument(
-    "--model-path",
-    type=str,
-    required=True,
-    help=(
-        "Path to the SVD-compressed model weights."
-        " The compression ratio will be inferred from the first occurrence of '_r' followed by a number in the filename."
-    ),
-)
-parser.add_argument(
-    "--batch-size",
-    type=int,
-    default=8,
-    help="Batch size for evaluation on Wikitext",
-)
 
-parser.add_argument(
-    "--q-bits",
-    type=int,
-    default=-100,
-    choices=[4, 8],
-    help="Quantization bit-width (4 or 8). Default is -100, which means no quantization.",
-)
+def evaluate_perplexity(model, data_loader, batch_size, seq_len):
 
-args = parser.parse_args()
+    model.eval()
+    model.half()
+    
+    DEVICE = model.device
+    
+    nlls = []
+    with torch.no_grad():
+        for batch in tqdm(data_loader, desc="Evaluating perplexity", total=len(data_loader)):
+            batch = batch.to(DEVICE)
+            logits = model(input_ids=batch, use_cache=False).logits
+            if torch.isfinite(logits).all():
+                shift_logits = logits[:, :-1, :].contiguous()
+                shift_labels = batch[:, 1:].contiguous()
+                loss_fct = nn.CrossEntropyLoss(reduction='none')
+                loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+                nlls.append(loss.cpu())
+            else:
+                print("Bad logits detected, skipping batch.")
+                continue
+        mean_loss = torch.cat(nlls).mean()
+        ppl = torch.exp(mean_loss).item()
+        if ppl > 1000:
+            ppl = int(ppl)
+            
+        return ppl
+    
 
-# Extract ratio from model_path (e.g., '_r0.8')
-match = re.search(r"_r([0-9]+(?:\.[0-9]+)?)", args.model_path)
-if not match:
-    parser.error(
-        "Could not infer ratio from model_path. Ensure it contains '_r<ratio>' (e.g., '_r0.8')."
+
+def evaluate_commonsense(model, tokenizer, eval_dataset_name):
+    import lm_eval
+    from lm_eval import tasks
+    from lm_eval import utils as lm_eval_utils
+    from lm_eval.api.registry import ALL_TASKS
+    from lm_eval.models.huggingface import HFLM
+    from lm_eval import evaluator
+    
+    model.eval()
+    model.half()
+    
+    hflm = HFLM(pretrained=model, tokenizer=tokenizer)
+    
+    results = evaluator.simple_evaluate(
+        model=hflm,
+        tasks=[eval_dataset_name]
     )
-args.ratio = float(match.group(1))
+    
+    return results['results']
 
-# Set seed for reproducibility and deterministic results
-torch.manual_seed(42)
-torch.cuda.manual_seed(42)
-torch.cuda.manual_seed_all(42)
-torch.backends.cudnn.enabled = True
-torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = False
-
-# Load original model and tokenizer
-print(f"Loading base model: {args.base_model}")
-model = AutoModelForCausalLM.from_pretrained(
-    args.base_model, torch_dtype=torch.float16
-)
-tokenizer = AutoTokenizer.from_pretrained(args.base_model)
-
-SEQ_LEN = model.config.max_position_embeddings
-
-# Load SVD-compressed weights
-print(f"Applying SVD compression with ratio {args.ratio} from {args.model_path}")
-model = SVDModel.load_model(model, ratio=args.ratio, 
-                            model_path=args.model_path, 
-                            quantization_bits=None if args.q_bits == -100 
-                            else args.q_bits)
-
-# Prepare for evaluation
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model.half().to(DEVICE).eval()
-
-# Load dataset
-loader = load_wikitext(
-    tokenizer, seq_len=SEQ_LEN, batch_size=args.batch_size)
-
-# Evaluate perplexity
-nlls = []
-with torch.no_grad():
-    for batch in tqdm(loader, desc="Evaluating", total=len(loader)):
-        batch = batch.to(DEVICE)
-        logits = model(input_ids=batch, use_cache=False).logits
-        if torch.isfinite(logits).all():
-            shifted_logits = logits[:, :-1, :].contiguous()
-            shifted_labels = batch[:, 1:].contiguous()
-            loss_fnc = torch.nn.CrossEntropyLoss(reduction='none')
-            loss = loss_fnc(
-                shifted_logits.view(-1, logits.size(-1)),
-                shifted_labels.view(-1)
-            )
-            nlls.append(loss.cpu())
-        else:
-            print("Non-finite logits detected, skipping batch.")
-
-mean_loss = torch.cat(nlls).mean()
-ppl = torch.exp(mean_loss).item()
-ppl = int(ppl) if ppl > 1000 else ppl
-print(f"Perplexity: {ppl}")
-
-# Save the perplexity
-ppl_path = re.sub(r"\.pt$", "", args.model_path) + "_pplEvaluation.txt"
-with open(ppl_path, "w") as f:
-    f.write(str(ppl))
-print(f"Saved perplexity to {ppl_path}")
+def main(args):
+    # setting random seed of numpy and torch
+    SEED = args.seed
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    torch.cuda.manual_seed_all(args.seed)
+    torch.backends.cudnn.deterministic = True
+    
+    DEV_GPU = torch.device('cuda:0')
+    DEV_CPU= torch.device('cpu')
+    model_load_dtype = torch.float16
+    computeSVD_dtype = torch.float32
+    
+    # Create output directory if it doesn't exist
+    os.makedirs(args.output_dir, exist_ok=True)
+    
+    # Infer ratio from model_path
+    if args.ratios_path is not None:
+        # Ratios dict is a csv file with the name of the layer and the ratio
+        # Load the ratios dict
+        ratios_dict = {}
+        with open(args.ratios_path, "r") as f:
+            for line in f:
+                line = line.strip().split(",")
+                # This first line is the header
+                if line[1] == "Ratio" or line[0] == "MODULE":
+                    continue
+                layer_name = line[0]
+                ratio = float(line[1])
+                ratios_dict[layer_name] = ratio
+    else:
+        ratios_dict = None
+        
+    # Infer ratio from model_path, "_r0.x_" is the ratio
+    
+    ratio = float(args.model_path.split("_r")[1].split("_")[0])
+    
+    model = SVDModel.load_model(
+        model=AutoModelForCausalLM.from_pretrained(args.model_base, 
+                                                  torch_dtype=model_load_dtype),
+        ratio=ratio,
+        model_path=args.model_path,
+        quantization_bits=args.quantization_bits,
+        ratios_dict=ratios_dict
+    )
+    tokenizer = AutoTokenizer.from_pretrained(args.model_base)
+    
+    model.to(DEV_GPU)
+    if args.eval_metric == "ppl":
+        valid_datasets = {"wikitext2", "c4", "ptb"}
+        if args.eval_dataset not in valid_datasets:
+            raise ValueError(f"Invalid dataset {args.eval_dataset}. Choose from {valid_datasets}")
+        
+        DATASET_NAME = args.eval_dataset
+        tokenized_valdata = load_eval_tokenized_dataset(
+            tokenizer=tokenizer,
+            dataset_name=DATASET_NAME,
+            seq_len=args.seq_len,
+            batch_size=args.batch_size
+        )
+        
+        ppl = evaluate_perplexity(
+            model=model,
+            data_loader=tokenized_valdata,
+            batch_size=args.batch_size,
+            seq_len=args.seq_len
+        )
+        
+        print(f"Perplexity on {DATASET_NAME}: {ppl}")
+        # Save the results
+        output_dir = args.output_dir
+        os.makedirs(output_dir, exist_ok=True)
+        # The results must be saved in a json file with the name of the model, the name of the dataset and results
+        
+        # in the format of {model_name}_{dataset_name}_results.json
+        model_name = args.model_path.split("/")[-1]
+        dataset_name = args.eval_dataset
+        results = {
+            "model_name": model_name,
+            "dataset_name": dataset_name,
+            "ppl": ppl
+        }
+        results_file = os.path.join(output_dir, f"{model_name}_{dataset_name}_results.json")
+        with open(results_file, "w") as f:
+            json.dump(results, f)
+        print(f"Results saved in {results_file}")
+        
+        
+    if args.eval_metric == "accuracy":
+        valid_datasets = {"arc_easy", "arc_challenge", "openbookqa", "winogrande", "hellaswag", "piqa", "mathqa"}
+        if args.eval_dataset not in valid_datasets:
+            raise ValueError(f"Invalid dataset {args.eval_dataset}. Choose from {valid_datasets}")
+        
+        accuracy = evaluate_commonsense(model, tokenizer, args.eval_dataset)
+        print(f"Accuracy on {args.eval_dataset}: {accuracy}")
+        
+        # Save the results
+        output_dir = args.output_dir
+        os.makedirs(output_dir, exist_ok=True)
+        # The results must be saved in a json file with the name of the model, the name of the dataset and results
+        # in the format of {model_name}_{dataset_name}_results.json
+        model_name = args.model_path.split("/")[-1]
+        dataset_name = args.eval_dataset
+        results = {
+            "model_name": model_name,
+            "dataset_name": dataset_name,
+            "accuracy": accuracy
+        }
+        results_file = os.path.join(output_dir, f"{model_name}_{dataset_name}_results.json")
+        with open(results_file, "w") as f:
+            json.dump(results, f)
+        print(f"Results saved in {results_file}")
+        
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Evaluate a model")
+    
+    parser.add_argument("--model_base", type=str, 
+                        required=True, help="Base model name")
+    
+    parser.add_argument("--model_path", type=str, 
+                        required=True, help="Path to the compressed model")
+    
+    parser.add_argument("--quantization_bits", type=int,
+                        default=None, help="Number of bits for quantization")
+    
+    parser.add_argument("--ratios_path", type=str,
+                        default=None, help="Path to the ratios dictionary")
+    
+    parser.add_argument("--seq_len", type=int, 
+                        default=2048, help="Sequence length")
+    
+    parser.add_argument("--batch_size", type=int, 
+                        default=4, help="Batch size")
+    
+    parser.add_argument("--eval_metric", type=str, 
+                        default="ppl", choices=["ppl", "accuracy"], 
+                        help="Evaluation metric")
+    
+    parser.add_argument("--seed", type=int, 
+                        default=42, help="Random seed")
+    
+    
+    parser.add_argument(
+        "--eval_dataset",
+        type=str,
+        default="wikitext2",
+        choices=["wikitext2", "c4", "ptb", "arc_easy", "arc_challenge", "openbookqa", "winogrande", "hellaswag", "piqa", "mathqa"],
+        help="finetuning dataset",
+    )
+    
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        default="benchmark_results",
+        help="Directory to save the evaluation results",
+    )
+    
+    args = parser.parse_args()
+    main(args)

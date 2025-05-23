@@ -1,0 +1,1 @@
+{"model_name": "gsvd_llama-7b_r0.6_g500_c256_m1_d0.1_w.pt", "dataset_name": "openbookqa", "accuracy": {"openbookqa": {"alias": "openbookqa", "acc,none": 0.17, "acc_stderr,none": 0.016815633531393426, "acc_norm,none": 0.302, "acc_norm_stderr,none": 0.020553269174209198}}}

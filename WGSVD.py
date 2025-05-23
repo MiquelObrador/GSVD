@@ -121,7 +121,7 @@ for name, module in model.named_modules():
 model.to("cpu")
 torch.cuda.empty_cache()
 
-with open("grads/llama7b_weights.pkl", "rb") as f:
+with open("grads/llama7b_grads.pkl", "rb") as f:
     grads = pickle.load(f)
 
 class WeightedFrobeniusLoss(nn.Module):
