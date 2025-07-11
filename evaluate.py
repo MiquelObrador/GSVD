@@ -107,6 +107,7 @@ def main(args):
         quantization_bits=args.quantization_bits,
         ratios_dict=ratios_dict
     )
+    print(model)
     tokenizer = AutoTokenizer.from_pretrained(args.model_base)
     
     model.to(DEV_GPU)

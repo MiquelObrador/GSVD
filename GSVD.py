@@ -1,74 +1,81 @@
 import torch
 from torch import nn
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from utils import replace_module_by_name, load_wikitext, get_ratios, get_truncate, get_unique_path
-from modules import SVDLinearLayer
+from utils import (replace_module_by_name, get_calib_train_data,
+                   get_truncate, get_unique_path, load_eval_tokenized_dataset)
+from modules import SVDLinearLayer, WeightedMSELoss
 from tqdm import tqdm
 import os
 import argparse
+import pickle
 import csv
+import gc # --- CHANGE: Import garbage collector
 
 # --- Argument Parsing ---
 parser = argparse.ArgumentParser(description="Compress a Hugging Face model using GSVD.")
 parser.add_argument('--model-name', type=str, default="huggyllama/llama-7b",
                     help='Hugging Face model identifier (default: huggyllama/llama-7b)')
-parser.add_argument('--gradient-iters', type=int, default=500,
-                    help='Number of gradient descent iterations per layer (default: 500)')
-parser.add_argument('--matrix-iters', type=int, default=1,
-                    help='Number of matrix iterations (used in filename, default: 1)') # Note: This variable isn't used in the core logic beyond filename
 parser.add_argument('--ratio', type=float, default=0.6,
                     help='Compression ratio target for SVD (default: 0.6)')
 parser.add_argument('--calib-samples', type=int, default=256,
                     help='Number of calibration samples from WikiText (default: 256)')
+parser.add_argument('--calib-dataset', type=str, default="wikitext2",
+                    help='Calibration dataset to use (default: wikitext2)')
+parser.add_argument('--calib-batch-size', type=int, default=10,
+                    help='Batch size for calibration gradient descent (default: 10)')
+parser.add_argument('--gradient-epochs', type=int, default=50,
+                    help='Number of epochs for gradient descent calibration (default: 500)')
 parser.add_argument('--batch-size', type=int, default=4,
                     help='Batch size for calibration data loading (default: 4)')
 parser.add_argument('--output-dir-base', type=str, default="results",
                     help='Base directory to save results (default: results)')
 parser.add_argument('--seed', type=int, default=42,
                     help='Random seed for reproducibility (default: 42)')
+parser.add_argument('--grads-path', type=str, default=None,
+                    help='Path to the precomputed gradients importance weights (default: grads/llama7b_grads.pkl)')
 
 args = parser.parse_args()
-
-# Set seed for reproducibility and deterministic results
-torch.manual_seed(42)
-torch.cuda.manual_seed(42)
-torch.cuda.manual_seed_all(42)
-torch.backends.cudnn.enabled = True
-torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = False
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using device: {DEVICE}")
 
 # Use arguments parsed from CLI
 model_name = args.model_name
-GRADIENT_ITERS = args.gradient_iters
-MATRIX_ITERS = args.matrix_iters
 RATIO = args.ratio
 CALIB_SAMPLES = args.calib_samples
+CALIB_DATASET = args.calib_dataset
+CALIB_BATCH_SIZE = args.calib_batch_size
+GRADIENT_EPOCHS = args.gradient_epochs
 BATCH_SIZE = args.batch_size
+OUTPUT_DIR_BASE = args.output_dir_base
+SEED = args.seed
+GRADS_PATH = args.grads_path
+# Create output directory if it doesn't exist
+if not os.path.exists(f"{OUTPUT_DIR_BASE}"):
+    os.makedirs(f"{OUTPUT_DIR_BASE}")
+    
+# Set seed for reproducibility and deterministic results
+torch.manual_seed(SEED)
+torch.cuda.manual_seed(SEED)
+torch.cuda.manual_seed_all(SEED)  # For multi-GPU setups
+torch.backends.cudnn.enabled = True
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
 
-output_dir = f"{args.output_dir_base}/{model_name.split('/')[-1]}"
-
-print(f"--- Configuration ---")
-print(f"Model: {model_name}")
-print(f"Gradient Iterations: {GRADIENT_ITERS}")
-print(f"Matrix Iterations (filename): {MATRIX_ITERS}")
+print(f"--- Configurations ---")
+# ... (rest of config printing is unchanged)
+print(f"Model Name: {model_name}")
 print(f"Compression Ratio: {RATIO}")
 print(f"Calibration Samples: {CALIB_SAMPLES}")
-print(f"Calibration Batch Size: {BATCH_SIZE}")
-print(f"Output Directory: {output_dir}")
-print(f"Seed: {args.seed}")
-print(f"--------------------")
-
-
-if not os.path.exists(output_dir):
-    os.makedirs(output_dir)
-    print(f"Created output directory: {output_dir}")
-    
+print(f"Calibration Dataset: {CALIB_DATASET}")
+print(f"Calibration Batch Size: {CALIB_BATCH_SIZE}")
+print(f"Gradient Epochs: {GRADIENT_EPOCHS}")
+print(f"Batch Size: {BATCH_SIZE}")
+print(f"Output Directory Base: {OUTPUT_DIR_BASE}")
+print(f"Seed: {SEED}")
+print(f"Grads Path: {GRADS_PATH}")
 
 print(f"Loading model: {model_name}...")
-# Consider adding error handling for model/tokenizer loading
 model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.float16)
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 print("Model loaded.")
@@ -76,163 +83,199 @@ print("Model loaded.")
 og_num_params = sum(p.numel() for p in model.parameters())
 print("Number of parameters before GSVD compression:", og_num_params)
 
+SEQLEN = model.config.max_position_embeddings
+print(f"Sequence Length: {SEQLEN}")
+
 print("Loading calibration data...")
-calib_data = load_wikitext(tokenizer,
-                            seq_len=2048,
-                            batch_size=BATCH_SIZE,
-                            samples=CALIB_SAMPLES)
-
-print("Loaded calibration data.")
-
-model.eval()
-model.to(DEVICE)
-
-def hook(module, input, output):
-    """
-    Hook function to store the pre-activation and post-activation outputs of a module.
-    """
-    # Move to CPU immediately to free GPU memory, clone to avoid modifying original tensor downstream
-    current_pre_act = input[0].detach().cpu()
-    current_post_act = output.detach().cpu()
-
-    # Ensure tensors are concatenated correctly, even if initial tensor is empty
-    module.pre_act = torch.cat((module.pre_act, current_pre_act), dim=0) if module.pre_act.numel() != 0 else current_pre_act
-    module.post_act = torch.cat((module.post_act, current_post_act), dim=0) if module.post_act.numel() != 0 else current_post_act
-    
-for name, module in model.named_modules():
-    if isinstance(module, nn.Linear):
-        module.pre_act = torch.empty(0).to(DEVICE)
-        module.post_act = torch.empty(0).to(DEVICE)
-        module.register_forward_hook(hook)
-        
-with torch.no_grad():
-    print("Running calibration...")
-    for batch in tqdm(calib_data, desc="Calibrating", total=len(calib_data)):
-        batch = batch.to(DEVICE)
-        model(input_ids=batch, use_cache=False)
-        
-print("Calibration complete.")
-
-for name, module in model.named_modules():
-    if isinstance(module, nn.Linear):
-        module._forward_hooks.clear()  # Clear hooks to avoid memory leaks
-        
-model.to("cpu")
-torch.cuda.empty_cache()
-
-class FrobeniusLoss(nn.Module):
-    def __init__(self):
-        super(FrobeniusLoss, self).__init__()
-
-    def forward(self, inputs, targets):
-        return torch.norm(inputs.view(-1) - targets.view(-1), p='fro')
+calib_data = get_calib_train_data(name=CALIB_DATASET,
+                                  tokenizer=tokenizer,
+                                  seqlen=SEQLEN,
+                                  batch_size=BATCH_SIZE,
+                                  nsamples=CALIB_SAMPLES,
+                                  seed=SEED)
+print("Calibration data loaded.")
 
 losses_per_module = {}
+completed_layers = set() # --- CHANGE: Keep track of completed layers
 
-print("Starting GSVD Compression...")
+# --- CHANGE: Checkpoint logic added ---
+checkpoint_path = f"{OUTPUT_DIR_BASE}/gsvd_checkpoint.pth"
+if os.path.exists(checkpoint_path):
+    print(f"Resuming from checkpoint: {checkpoint_path}")
+    checkpoint = torch.load(checkpoint_path, map_location='cpu')
+    model.load_state_dict(checkpoint['model_state_dict'])
+    completed_layers = checkpoint['completed_layers']
+    losses_per_module = checkpoint['losses_per_module']
+    print(f"Loaded {len(completed_layers)} completed layers from checkpoint.")
+# --- End of Checkpoint logic ---
 
-for name, module in tqdm(list(model.named_modules()), desc="Modules"):
-    if isinstance(module, nn.Linear):
-        if name == "lm_head":
-            continue
-        torch.cuda.empty_cache()
-        
-        ratios = get_ratios(RATIO, MATRIX_ITERS)
-        
-        W = module.weight.data.clone().to(DEVICE).float()
-        b = module.bias.data.clone().to(DEVICE).float() if module.bias is not None else None
-        
-        pre_act = module.pre_act.to(DEVICE).float()
-        post_act = module.post_act.to(DEVICE).float()
-        
-        module.pre_act = torch.empty(0)
-        module.post_act = torch.empty(0)
-        
-        out_features, in_features = W.shape
-        
-        for i, ratio in enumerate(ratios):
-            
-            loss_fn = FrobeniusLoss()
-            
-            print(f"Optimizing {name} with ratio {ratio:.2f}")
-            
-            low_rank = get_truncate(in_features, out_features, ratio)
-                
-            new_module = SVDLinearLayer(weights=W,
-                                        bias=b,
-                                        truncate=low_rank,
-                                        data=pre_act,
-                                        from_savepoint=False)
-            
-            new_module.train()
-            new_module.to(DEVICE)
-            
-            with torch.no_grad():
-                starting_loss = loss_fn(new_module(pre_act), post_act).item()
-            
-            if i == 0:
-                initial_loss = starting_loss
-                
-            # Calculate inital lr based on the initial loss
-            
-            if starting_loss > 30:
-                initial_lr = 0.0001
-            else:
-                initial_lr = 0.00001
-            
-            optimizer = torch.optim.Adam(new_module.parameters(), lr=initial_lr)
-            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=GRADIENT_ITERS, eta_min=0.00001)
-            pbar = tqdm(range(GRADIENT_ITERS), desc=f"Optimizing {name}", leave=False)
-            for _ in pbar:
-                optimizer.zero_grad()
-                output_pred = new_module(pre_act)
-                loss = loss_fn(output_pred, post_act)
-                loss.backward()
-                optimizer.step()
-                scheduler.step()
-                pbar.set_postfix({"loss": loss.item()})
-                
+# Load grads if provided
+if GRADS_PATH is not None:
+    print(f"Using precomputed gradients from {GRADS_PATH}")
+    with open(GRADS_PATH, 'rb') as f:
+        grads = torch.load(f)
+else:
+    print("No precomputed gradients provided, using default behavior.")
+
+print(" Starting GSVD compression...")
+
+# 1. Get only the names of the linear layers first.
+linear_layer_names = []
+for name, module in model.named_modules():
+    if isinstance(module, nn.Linear) and name != "lm_head":
+        linear_layer_names.append(name)
+
+# 2. Iterate through the names and fetch the module inside the loop.
+# Reverse the list to process from the last layer to the first
+for name in tqdm(reversed(linear_layer_names), desc="Modules", total=len(linear_layer_names)):
+    if name in completed_layers:
+        print(f"Skipping already processed layer: {name}")
+        continue
+    
+    # Fetch the specific module from the model *right before* you use it.
+    module = model.get_submodule(name)
+    
+    # --- The rest of your loop logic remains the same ---
+    torch.cuda.empty_cache()
+
+    # Get the activations of the module
+    activations = []
+    def forward_hook(module, input, output):
+        activations.append(input[0].detach().cpu())
+
+    # The hook is registered on the specific module we just fetched
+    hook = module.register_forward_hook(forward_hook)
+    model.eval()
+    model.half()
+    model.to(DEVICE)
+    with torch.no_grad():
+        for batch in tqdm(calib_data, desc=f"Getting activations for {name}"):
+            input_ids = batch['input_ids'].to(DEVICE)
+            attention_mask = batch['attention_mask'].to(DEVICE)
+            model(input_ids=input_ids, attention_mask=attention_mask, use_cache=False)
+    hook.remove()
+
+    # --- CHANGE: Aggressively clear VRAM after activation gathering ---
+    model.to('cpu')
+    gc.collect()
+    torch.cuda.empty_cache()
+    # --- End of VRAM clearing ---
+    
+    activations = torch.cat(activations, dim=0).float()
+
+    module.to(DEVICE).float()
+
+    W = module.weight.data.clone().detach().to(DEVICE)
+    b = module.bias.data.clone().detach().to(DEVICE) if module.bias is not None else None
+
+    out_features, in_features = W.shape
+    low_rank = get_truncate(in_features, out_features, RATIO)
+    print(f"Applying GSVD to {name} with low rank: {low_rank}")
+
+    U, S, VT = torch.linalg.svd(W, full_matrices=False)
+    s_sqrt = torch.diag(torch.sqrt(S))
+    u_parameter = torch.matmul(U[:, :low_rank], s_sqrt[:low_rank, :low_rank])
+    vt_parameter = torch.matmul(s_sqrt[:low_rank, :low_rank], VT[:low_rank, :])
+
+    svd_layer = SVDLinearLayer(
+        vt_parameter=vt_parameter,
+        u_parameter=u_parameter,
+        bias=b,
+    )
+    svd_layer.to(DEVICE).train()
+    
+    # If the layer is a mlp.gate_proj let's calibrate it with the activation function to ensure a more accurate representation
+    if 'mlp.gate_proj' in name:
+        print(f"Using SiLU activation for {name}...")
+        activation = nn.SiLU()
+    else:
+        activation = nn.Identity()
+
+    del W, U, S, VT, s_sqrt, u_parameter, vt_parameter, b
+    torch.cuda.empty_cache()
+    
+    importance_weights = grads[name] if GRADS_PATH is not None else None
+    #Ensure no 0 importance weights are passed, if they are, use a threshold of 0.01
+    if importance_weights is not None:
+        importance_weights = torch.where(importance_weights < 0.01, torch.tensor(0.01, device=importance_weights.device), importance_weights)
+
+    loss_fn = WeightedMSELoss(weights=importance_weights,
+                              reduction="mean").to(DEVICE)
+    
+    optimizer = torch.optim.AdamW(svd_layer.parameters(), lr=1e-4, weight_decay=1e-3)
+
+    print(f"Training GSVD layer for {name}...")
+    activation_dataset = torch.utils.data.TensorDataset(activations)
+    activation_loader = torch.utils.data.DataLoader(
+        activation_dataset,
+        batch_size=CALIB_BATCH_SIZE,
+        shuffle=True
+    )
+    
+    loss_log = []
+    for epoch in range(GRADIENT_EPOCHS):
+        epoch_loss_log = []
+        pbar = tqdm(activation_loader, desc=f"Epoch {epoch+1}/{GRADIENT_EPOCHS}", leave=False)
+
+        for batch_tuple in pbar:
+            batch = batch_tuple[0].to(DEVICE)
             optimizer.zero_grad()
-            
-            new_module.eval()
-            
-            if len(ratios) > 1:
-                with torch.no_grad():
-                    W = new_module.reconstruct_weights().to(DEVICE)
-            
-        new_module.eval()
-        with torch.no_grad():
-            final_loss = loss_fn(new_module(pre_act), post_act).detach().cpu().item()
-        new_module.to("cpu")
-        replace_module_by_name(model, name, new_module)
-        loss_delta = final_loss - initial_loss
-        losses_per_module[name] = (loss_delta, initial_loss, final_loss)
-        del W, b, pre_act, post_act, optimizer, loss_fn, new_module, initial_loss, final_loss, loss
-        torch.cuda.empty_cache()
-        
-model.to("cpu")
-torch.cuda.empty_cache()
-        
-# Save the modified model, the name should contain the model name, the compression ratio, the number of gradient iterations, teh calibration samples, and the matrix iteration
+            output = activation(svd_layer(batch))
+            # The target needs to be computed on the GPU with the original module
+            with torch.no_grad():
+                target = activation(module(batch))
+            loss = loss_fn(output, target)
+            loss.backward()
+            optimizer.step()
+            epoch_loss_log.append(loss.item())
+            pbar.set_postfix({'loss': loss.item()})
+        loss_log.append(sum(epoch_loss_log) / len(epoch_loss_log))
 
-filename = f"gsvd_{model_name.split('/')[-1]}_r{RATIO}_g{GRADIENT_ITERS}_c{CALIB_SAMPLES}_m{MATRIX_ITERS}"
-save_path = get_unique_path(os.path.join(output_dir, filename + ".pt"))
-losses_path = get_unique_path(os.path.join(output_dir, filename + "_losses.csv"))
-ppl_path = get_unique_path(os.path.join(output_dir, filename + "_ppl.txt"))
+    print(f"Finished training GSVD layer for {name}. Loss: {loss_log[-1]}")
+    losses_per_module[name] = loss_log[-1]
+    
+    svd_layer.to('cpu').eval().half()
+    replace_module_by_name(model, name, svd_layer)
+    
+    # --- CHANGE: Clean up and save checkpoint ---
+    del svd_layer, activations, loss_fn, optimizer, module
+    completed_layers.add(name)
+    gc.collect()
+    torch.cuda.empty_cache()
+
+    print(f"Saving checkpoint after completing layer {name}...")
+    checkpoint = {
+        'model_state_dict': model.state_dict(),
+        'completed_layers': completed_layers,
+        'losses_per_module': losses_per_module,
+    }
+    torch.save(checkpoint, checkpoint_path)
+    # --- End of cleanup and checkpointing ---
+
+print("GSVD compression completed.")
+
+# ... (The rest of the script for final saving and evaluation is unchanged)
+
+model.to('cpu')
+torch.cuda.empty_cache()
+
+filename = f"gsvd_{model_name.split('/')[-1]}_r{RATIO}_g{GRADIENT_EPOCHS}_cb{CALIB_BATCH_SIZE}"
+save_path = get_unique_path(f"{OUTPUT_DIR_BASE}/{filename}.pt")
+losses_path = get_unique_path(f"{OUTPUT_DIR_BASE}/{filename}_losses.csv")
+ppl_path = get_unique_path(f"{OUTPUT_DIR_BASE}/{filename}_ppl.txt")
 
 torch.save(model.state_dict(), save_path)
 print(f"Model saved to {save_path}")
 
-# Save the losses to a csv file
-with open(losses_path, "w", newline='') as f:
+with open(losses_path, 'w') as f:
     writer = csv.writer(f)
-    writer.writerow(["MODULE","LOSS DELTA","INITIAL LOSS","FINAL LOSS"])
-    for name, (loss_delta, initial_loss, final_loss) in losses_per_module.items():
-        writer.writerow([name, loss_delta, initial_loss, final_loss])
+    writer.writerow(['Module', 'Loss'])
+    for name, loss in losses_per_module.items():
+        writer.writerow([name, loss])
 print(f"Losses saved to {losses_path}")
 
-# Calculate the ppl of the model
-
+# Evaluate the model on the calibration dataset
+print("Evaluating model on calibration dataset...")
 with torch.no_grad():
     model.eval()
     model.half()
@@ -241,7 +284,7 @@ with torch.no_grad():
     BATCH_SIZE = 8
     SEQ_LEN = model.config.max_position_embeddings
     
-    loader = load_wikitext(tokenizer,
+    loader = load_eval_tokenized_dataset(tokenizer,
                             seq_len=SEQ_LEN,
                             batch_size=BATCH_SIZE)
     nlls = []
@@ -266,14 +309,10 @@ print("\nGSVD Compression complete.")
 
 final_params = sum(p.numel() for p in model.parameters())
 print("Number of parameters after GSVD compression:", final_params)
-model_size_gb = final_params * 4 / (1024 ** 3)  # Assuming float32 (4 bytes)
+model_size_gb = final_params * 4 / (1024 ** 3)
 print(f"Model size after GSVD compression: {model_size_gb:.2f} GB")
-
-# Compare the initial and final model number of parameters
-
 print(f"Compression ratio: {final_params / og_num_params:.2f}")
-
 print(f"Perplexity obtained after GSVD compression: {ppl}")
-# Save perplexity to a file with the ratio and iterations in the filename
+
 with open(ppl_path, "w") as f:
     f.write(str(ppl))

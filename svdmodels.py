@@ -42,9 +42,16 @@ class SVDModel(nn.Module):
                     ratio = ratio
                 
                 low_rank = get_truncate(in_features, out_features, ratio)
-                    
+                # SVD needs a vt parameter and a u_parameter, we can create a dummy ones to initialize the SVD layer and the load the weights later
+                # Create dummy parameters for SVD
+                vt_parameter = torch.zeros(low_rank, in_features)
+                u_parameter = torch.zeros(out_features, low_rank)
                 # Create the SVD layer
-                svd_layer = SVDLinearLayer(W, low_rank, b, from_savepoint=True)
+                svd_layer = SVDLinearLayer(
+                    vt_parameter=vt_parameter,
+                    u_parameter=u_parameter,
+                    bias=b,
+                )
             
                 # Replace the original layer with the SVD layer
                 replace_module_by_name(model, name, svd_layer)

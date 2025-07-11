@@ -10,3 +10,5 @@ grads/
 results/*
 datasets/
 notebooks/
+cache/
+.vscode/
