@@ -9,7 +9,7 @@ python GSVD.py \
     --calib-batch-size 10 \
     --gradient-epochs 50 \
     --batch-size 8 \
-    --output-dir-base "results/gsvd_wmse_2" \
+    --output-dir-base "results/gsvd_hmsecos" \
     --grads-path "grads/llama7b_gradsppl_out.pt" \
 
 # set -euo pipefail

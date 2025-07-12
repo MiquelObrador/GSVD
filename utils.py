@@ -112,9 +112,7 @@ def get_calib_train_data(name, tokenizer, nsamples, seqlen=2048, seed=3, batch_s
 def load_eval_tokenized_dataset(tokenizer,
                            dataset_name: str = 'wikitext-2-raw-v1',
                            seq_len: int = 2048,
-                           batch_size: int = 4,
-                           samples: int = None,
-                           seed: int = 42):
+                           batch_size: int = 4):
     """
     Load and tokenize a variety of NLP datasets with reproducible sampling.
 
@@ -139,48 +137,31 @@ def load_eval_tokenized_dataset(tokenizer,
         def __len__(self):
             return len(self.tensors)
 
-    def process_data(records, field_name: str):
+    def process_data(samples, tokenizer, seq_len, field_name):
         # concatenate texts, tokenize, and split into fixed subsequences
-        raw_text = "\n\n".join([r[field_name] for r in records])
-        token_ids = tokenizer(raw_text, return_tensors='pt').input_ids[0]
+        test_ids = tokenizer("\n\n".join(samples[field_name]), return_tensors='pt').input_ids[0]
+        test_ids_batch = []
+        nsamples = test_ids.numel() // seq_len
 
-        # truncate to a multiple of seq_len
-        total_len = (token_ids.size(0) // seq_len) * seq_len
-        token_ids = token_ids[:total_len]
-
-        # reshape into chunks
-        chunks = token_ids.view(-1, seq_len)
-        return IndexDataset(tensors=chunks)
+        for i in range(nsamples):
+            batch = test_ids[(i * seq_len):((i + 1) * seq_len)]
+            test_ids_batch.append(batch)
+        test_ids_batch = torch.stack(test_ids_batch)
+        return IndexDataset(tensors=test_ids_batch)
 
     # Load the requested dataset split
     if "wikitext" in dataset_name.lower():
-        ds = load_dataset('wikitext', "wikitext-2-raw-v1", split="test")
-        field = 'text'
+        test_data = load_dataset('wikitext', 'wikitext-2-raw-v1', split='test')
+        test_dataset = process_data(test_data, tokenizer, seq_len, 'text')
     elif "ptb" in dataset_name.lower():
-        ds = load_dataset('ptb_text_only', "penn_treebank", split="test")
-        field = 'sentence'
+        test_data = load_dataset('ptb_text_only', 'penn_treebank', split='test')
+        test_dataset = process_data(test_data, tokenizer, seq_len, 'sentence')
     elif "c4" in dataset_name.lower():
-        # expects a local JSON file with a 'text' field
-        ds = load_dataset('json', data_files="datasets/c4-validation.00000-of-00008.json.gz")["train"]
-        field = 'text'
-    else:
-        raise ValueError(f"Unsupported dataset type: {dataset_name}. Supported types are: wikitext, penn_treebank, c4.")
-    
-    import random
-
-    # Optionally sample a subset of examples reproducibly
-    if samples is not None and samples < len(ds):
-        if seed is not None:
-            random.seed(seed)
-        indices = random.sample(range(len(ds)), samples)
-        ds = ds.select(indices)
-
-    # Process and tokenize
-    token_dataset = process_data(ds, field_name=field)
-
-    # Build DataLoader
-    loader = DataLoader(token_dataset, batch_size=batch_size, shuffle=False)
-    return loader
+        test_data = load_dataset('json', data_files="datasets/c4-validation.00000-of-00008.json.gz")["train"]
+        test_dataset = process_data(test_data[0:2000], tokenizer, seq_len, 'text')
+        
+    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+    return test_loader
 
 def get_truncate(in_features, out_features, ratio):
     return int(in_features * out_features * ratio / (in_features + out_features))

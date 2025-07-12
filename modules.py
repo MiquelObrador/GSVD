@@ -206,9 +206,9 @@ class WeightedMSELoss(nn.Module):
         else:
             self.weights = None
 
-    def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    def forward(self, inputs: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         # squared error
-        diff = (input - target) ** 2  # shape: (batch, seqlen, features)
+        diff = (inputs - target) ** 2  # shape: (batch, seqlen, features)
 
         if self.weights is not None:
             # apply per-feature weights
@@ -222,3 +222,27 @@ class WeightedMSELoss(nn.Module):
             return diff
         else:
             raise ValueError(f"Unsupported reduction '{self.reduction}'")
+        
+class HybridLoss(nn.Module):
+    def __init__(self, alpha=0.5, weights=None, reduction='mean'):
+        super(HybridLoss, self).__init__()
+        self.alpha = alpha
+        self.mse_loss = WeightedMSELoss(weights=weights, reduction=reduction)
+        self.cosine_loss = nn.CosineSimilarity(dim=-1)
+
+    def forward(self, inputs: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        # Prevent division by zero in cosine similarity for zero vectors
+        # A small epsilon is added to the denominator in the implementation
+        cos_sim = self.cosine_loss(inputs, target)
+        directional_error = 1 - cos_sim  # 1 - cosine similarity gives a measure of directional error
+        
+        with torch.no_grad():
+            target_magnitude = torch.norm(target, p=2, dim=-1)
+            magnitude_weights = target_magnitude / target_magnitude.mean()  # Normalize by mean magnitude
+            
+        weighted_directional_error = (directional_error * magnitude_weights).mean()
+        
+        weighted_mse_loss = self.mse_loss(inputs, target)
+        
+        return self.alpha * weighted_mse_loss + (1 - self.alpha) * weighted_directional_error
+        

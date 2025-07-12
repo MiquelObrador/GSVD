@@ -3,7 +3,7 @@ from torch import nn
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from utils import (replace_module_by_name, get_calib_train_data,
                    get_truncate, get_unique_path, load_eval_tokenized_dataset)
-from modules import SVDLinearLayer, WeightedMSELoss
+from modules import SVDLinearLayer, WeightedMSELoss, HybridLoss
 from tqdm import tqdm
 import os
 import argparse
@@ -199,8 +199,9 @@ for name in tqdm(reversed(linear_layer_names), desc="Modules", total=len(linear_
     if importance_weights is not None:
         importance_weights = torch.where(importance_weights < 0.01, torch.tensor(0.01, device=importance_weights.device), importance_weights)
 
-    loss_fn = WeightedMSELoss(weights=importance_weights,
-                              reduction="mean").to(DEVICE)
+    loss_fn = HybridLoss(weights=importance_weights,
+                        alpha=0.5,  # Adjust alpha as needed
+                        reduction="mean").to(DEVICE)
     
     optimizer = torch.optim.AdamW(svd_layer.parameters(), lr=1e-4, weight_decay=1e-3)
 
