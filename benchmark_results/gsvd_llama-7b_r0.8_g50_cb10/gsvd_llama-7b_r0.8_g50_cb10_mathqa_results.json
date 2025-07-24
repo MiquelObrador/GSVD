@@ -1,0 +1,1 @@
+{"model_name": "gsvd_llama-7b_r0.8_g50_cb10", "dataset_name": "mathqa", "accuracy": {"mathqa": {"alias": "mathqa", "acc,none": 0.24388609715242882, "acc_stderr,none": 0.007861179706000502, "acc_norm,none": 0.24321608040201004, "acc_norm_stderr,none": 0.007853851419309114}}}

@@ -3,7 +3,7 @@
 # This script runs the GSVD algorithm on a given dataset.
 
 python GSVD.py \
-    --ratio 0.6 \
+    --ratio 0.2 \
     --calib-samples 256 \
     --calib-dataset "wikitext2" \
     --calib-batch-size 10 \

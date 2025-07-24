@@ -1,0 +1,1 @@
+{"model_name": "gsvd_llama-7b_r0.2_g50_cb10", "dataset_name": "hellaswag", "accuracy": {"hellaswag": {"alias": "hellaswag", "acc,none": 0.2604062935670185, "acc_stderr,none": 0.004379594059141026, "acc_norm,none": 0.25731925911173076, "acc_norm_stderr,none": 0.004362633637374479}}}

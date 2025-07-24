@@ -1,0 +1,1 @@
+{"model_name": "gsvd_llama-7b_r0.6_g50_cb10.pt", "dataset_name": "arc_challenge", "accuracy": {"arc_challenge": {"alias": "arc_challenge", "acc,none": 0.25426621160409557, "acc_stderr,none": 0.012724999945157751, "acc_norm,none": 0.28924914675767915, "acc_norm_stderr,none": 0.013250012579393443}}}

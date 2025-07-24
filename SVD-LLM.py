@@ -109,7 +109,7 @@ if DYNAMIC_RANK and grad_weights is not None:
     print("Dynamic ranks calculated.")
     
 else:
-    final_ranks = None
+    final_ranks = []
     print("Dynamic rank allocation is disabled or gradients are not provided.")
 
 og_num_params = sum(p.numel() for p in model.parameters())
@@ -202,6 +202,9 @@ for name, module in tqdm(model.named_modules(), desc="SVD Decomposition", total=
             importance_scores = grad_weights[name].to(DEVICE).float()
             
             importance_scores = torch.clamp(importance_scores, min=0.01, max=1.0)
+
+        else:
+            importance_scores = torch.ones(W.shape[0], device=DEVICE, dtype=torch.float32)
             
         try:
                 scaling_matrix_inv = torch.linalg.inv(scaling_diag_matrix)

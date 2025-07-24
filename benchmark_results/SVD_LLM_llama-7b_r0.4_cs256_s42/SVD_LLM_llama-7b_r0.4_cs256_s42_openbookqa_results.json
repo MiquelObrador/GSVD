@@ -1,0 +1,1 @@
+{"model_name": "SVD_LLM_llama-7b_r0.4_cs256_s42", "dataset_name": "openbookqa", "accuracy": {"openbookqa": {"alias": "openbookqa", "acc,none": 0.134, "acc_stderr,none": 0.015249692003854494, "acc_norm,none": 0.242, "acc_norm_stderr,none": 0.019173085678337174}}}

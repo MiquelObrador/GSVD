@@ -1,0 +1,1 @@
+{"model_name": "SVD_LLM_llama-7b_r0.8_cs256_s42", "dataset_name": "piqa", "accuracy": {"piqa": {"alias": "piqa", "acc,none": 0.691512513601741, "acc_stderr,none": 0.010776164678037154, "acc_norm,none": 0.6980413492927094, "acc_norm_stderr,none": 0.010711732891588353}}}

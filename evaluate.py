@@ -77,6 +77,14 @@ def main(args):
     
     # Create output directory if it doesn't exist
     os.makedirs(args.output_dir, exist_ok=True)
+
+    model_name = os.path.basename(args.model_path)
+    if model_name.endswith('.pt'):
+        model_name = model_name[:-3]  # Remove .pt extension
+
+    # Create model-specific output directory
+    model_output_dir = os.path.join(args.output_dir, model_name)
+    os.makedirs(model_output_dir, exist_ok=True)
     
     # Infer ratio from model_path
     if args.ratios_path is not None:
@@ -107,7 +115,7 @@ def main(args):
         quantization_bits=args.quantization_bits,
         ratios_dict=ratios_dict
     )
-    print(model)
+    model.half()  # Convert model to half precision
     tokenizer = AutoTokenizer.from_pretrained(args.model_base)
     
     model.to(DEV_GPU)
@@ -133,23 +141,15 @@ def main(args):
         
         print(f"Perplexity on {DATASET_NAME}: {ppl}")
         # Save the results
-        output_dir = args.output_dir
-        os.makedirs(output_dir, exist_ok=True)
-        # The results must be saved in a json file with the name of the model, the name of the dataset and results
-        
-        # in the format of {model_name}_{dataset_name}_results.json
-        model_name = args.model_path.split("/")[-1]
-        dataset_name = args.eval_dataset
         results = {
             "model_name": model_name,
-            "dataset_name": dataset_name,
-            "ppl": ppl
+            "dataset_name": DATASET_NAME,
+            "perplexity": ppl
         }
-        results_file = os.path.join(output_dir, f"{model_name}_{dataset_name}_results.json")
+        results_file = os.path.join(model_output_dir, f"{model_name}_{DATASET_NAME}_results.json")
         with open(results_file, "w") as f:
             json.dump(results, f)
         print(f"Results saved in {results_file}")
-        
         
     if args.eval_metric == "accuracy":
         valid_datasets = {"arc_easy", "arc_challenge", "openbookqa", "winogrande", "hellaswag", "piqa", "mathqa"}
@@ -159,19 +159,13 @@ def main(args):
         accuracy = evaluate_commonsense(model, tokenizer, args.eval_dataset)
         print(f"Accuracy on {args.eval_dataset}: {accuracy}")
         
-        # Save the results
-        output_dir = args.output_dir
-        os.makedirs(output_dir, exist_ok=True)
-        # The results must be saved in a json file with the name of the model, the name of the dataset and results
-        # in the format of {model_name}_{dataset_name}_results.json
-        model_name = args.model_path.split("/")[-1]
-        dataset_name = args.eval_dataset
         results = {
             "model_name": model_name,
-            "dataset_name": dataset_name,
+            "dataset_name": args.eval_dataset,
             "accuracy": accuracy
         }
-        results_file = os.path.join(output_dir, f"{model_name}_{dataset_name}_results.json")
+
+        results_file = os.path.join(model_output_dir, f"{model_name}_{args.eval_dataset}_results.json")
         with open(results_file, "w") as f:
             json.dump(results, f)
         print(f"Results saved in {results_file}")

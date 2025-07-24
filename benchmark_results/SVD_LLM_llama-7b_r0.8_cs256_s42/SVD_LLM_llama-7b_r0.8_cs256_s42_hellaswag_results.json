@@ -1,0 +1,1 @@
+{"model_name": "SVD_LLM_llama-7b_r0.8_cs256_s42", "dataset_name": "hellaswag", "accuracy": {"hellaswag": {"alias": "hellaswag", "acc,none": 0.43158733320055764, "acc_stderr,none": 0.004942853459371538, "acc_norm,none": 0.6074487153953396, "acc_norm_stderr,none": 0.004873203269366314}}}

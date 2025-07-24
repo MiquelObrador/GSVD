@@ -7,9 +7,9 @@ from modules import SVDLinearLayer, WeightedMSELoss, HybridLoss
 from tqdm import tqdm
 import os
 import argparse
-import pickle
 import csv
 import gc # --- CHANGE: Import garbage collector
+from transformers.activations import ACT2FN
 
 # --- Argument Parsing ---
 parser = argparse.ArgumentParser(description="Compress a Hugging Face model using GSVD.")
@@ -83,7 +83,12 @@ print("Model loaded.")
 og_num_params = sum(p.numel() for p in model.parameters())
 print("Number of parameters before GSVD compression:", og_num_params)
 
-SEQLEN = model.config.max_position_embeddings
+# Securely get activation function from config, fallback to nn.Identity if not present
+activation_fn = ACT2FN[model.config.hidden_act] if hasattr(model.config, "hidden_act") and model.config.hidden_act in ACT2FN else nn.Identity()
+print(f"Activation Function: {getattr(activation_fn, '__name__', activation_fn.__class__.__name__)}")
+
+# Securely get sequence length from config, fallback to 2048 if not present
+SEQLEN = getattr(model.config, "max_position_embeddings", 2048)
 print(f"Sequence Length: {SEQLEN}")
 
 print("Loading calibration data...")
@@ -103,12 +108,38 @@ checkpoint_path = f"{OUTPUT_DIR_BASE}/gsvd_checkpoint.pth"
 if os.path.exists(checkpoint_path):
     print(f"Resuming from checkpoint: {checkpoint_path}")
     checkpoint = torch.load(checkpoint_path, map_location='cpu')
-    model.load_state_dict(checkpoint['model_state_dict'])
+    state_dict = checkpoint['model_state_dict']
     completed_layers = checkpoint['completed_layers']
     losses_per_module = checkpoint['losses_per_module']
-    print(f"Loaded {len(completed_layers)} completed layers from checkpoint.")
+    
+    # Replace completed layers with empty SVDLinearLayer instances
+    for name in tqdm(completed_layers, desc="Replacing completed layers", total=len(completed_layers)):
+        original_module = model.get_submodule(name)
+        if not isinstance(original_module, nn.Linear):
+            continue
+        
+        u_key = f"{name}.u_linear.weight"
+        vt_key = f"{name}.vt_linear.weight"
+        rank = state_dict[u_key].shape[1]
+        
+        # SVD needs a vt parameter and a u_parameter, we can create a dummy ones to initialize the SVD layer and the load the weights later
+        # Create dummy parameters for SVD
+        vt_parameter = torch.zeros(rank, original_module.in_features)
+        u_parameter = torch.zeros(original_module.out_features, rank)
+        
+        svd_layer = SVDLinearLayer(
+            vt_parameter=vt_parameter,
+            u_parameter=u_parameter,
+            bias=original_module.bias.clone().detach() if original_module.bias is not None else None,
+        )
+        # Replace the original layer with the SVD layer
+        replace_module_by_name(model, name, svd_layer)
+        
+    model.load_state_dict(state_dict)
+    print("Checkpoint loaded successfully.")
+    print(f"Resuming GSVD compression with {len(completed_layers)} completed layers.")
 # --- End of Checkpoint logic ---
-
+print(completed_layers)
 # Load grads if provided
 if GRADS_PATH is not None:
     print(f"Using precomputed gradients from {GRADS_PATH}")
@@ -128,7 +159,8 @@ for name, module in model.named_modules():
 # 2. Iterate through the names and fetch the module inside the loop.
 # Reverse the list to process from the last layer to the first
 for name in tqdm(reversed(linear_layer_names), desc="Modules", total=len(linear_layer_names)):
-    if name in completed_layers:
+    # To check if the layer has already been processed use the name till the last dot
+    if any(name.startswith(completed_name) for completed_name in completed_layers):
         print(f"Skipping already processed layer: {name}")
         continue
     
@@ -186,8 +218,7 @@ for name in tqdm(reversed(linear_layer_names), desc="Modules", total=len(linear_
     
     # If the layer is a mlp.gate_proj let's calibrate it with the activation function to ensure a more accurate representation
     if 'mlp.gate_proj' in name:
-        print(f"Using SiLU activation for {name}...")
-        activation = nn.SiLU()
+        activation = activation_fn
     else:
         activation = nn.Identity()
 
@@ -267,6 +298,11 @@ ppl_path = get_unique_path(f"{OUTPUT_DIR_BASE}/{filename}_ppl.txt")
 
 torch.save(model.state_dict(), save_path)
 print(f"Model saved to {save_path}")
+
+# If we reached this point, we can safely delete the model checkpoint
+if os.path.exists(checkpoint_path):
+    os.remove(checkpoint_path)
+    print(f"Checkpoint removed: {checkpoint_path}")
 
 with open(losses_path, 'w') as f:
     writer = csv.writer(f)

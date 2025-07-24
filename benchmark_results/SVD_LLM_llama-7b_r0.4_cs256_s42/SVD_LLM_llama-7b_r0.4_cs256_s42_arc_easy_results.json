@@ -1,0 +1,1 @@
+{"model_name": "SVD_LLM_llama-7b_r0.4_cs256_s42", "dataset_name": "arc_easy", "accuracy": {"arc_easy": {"alias": "arc_easy", "acc,none": 0.2967171717171717, "acc_stderr,none": 0.009373559492986846, "acc_norm,none": 0.30176767676767674, "acc_norm_stderr,none": 0.00941899415852253}}}

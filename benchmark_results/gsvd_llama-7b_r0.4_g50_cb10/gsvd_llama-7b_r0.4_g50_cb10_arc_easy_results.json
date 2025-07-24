@@ -1,0 +1,1 @@
+{"model_name": "gsvd_llama-7b_r0.4_g50_cb10", "dataset_name": "arc_easy", "accuracy": {"arc_easy": {"alias": "arc_easy", "acc,none": 0.2895622895622896, "acc_stderr,none": 0.009306838912173905, "acc_norm,none": 0.30134680134680136, "acc_norm_stderr,none": 0.009415259879351622}}}

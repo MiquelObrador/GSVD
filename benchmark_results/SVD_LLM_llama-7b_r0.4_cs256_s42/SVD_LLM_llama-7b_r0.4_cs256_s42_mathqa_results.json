@@ -1,0 +1,1 @@
+{"model_name": "SVD_LLM_llama-7b_r0.4_cs256_s42", "dataset_name": "mathqa", "accuracy": {"mathqa": {"alias": "mathqa", "acc,none": 0.2221105527638191, "acc_stderr,none": 0.007609289843903926, "acc_norm,none": 0.22579564489112228, "acc_norm_stderr,none": 0.007653959786628157}}}

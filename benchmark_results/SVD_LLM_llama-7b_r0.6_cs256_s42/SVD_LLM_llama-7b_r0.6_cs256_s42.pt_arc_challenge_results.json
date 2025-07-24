@@ -1,0 +1,1 @@
+{"model_name": "SVD_LLM_llama-7b_r0.6_cs256_s42.pt", "dataset_name": "arc_challenge", "accuracy": {"arc_challenge": {"alias": "arc_challenge", "acc,none": 0.2440273037542662, "acc_stderr,none": 0.012551447627856253, "acc_norm,none": 0.27986348122866894, "acc_norm_stderr,none": 0.013119040897725922}}}
