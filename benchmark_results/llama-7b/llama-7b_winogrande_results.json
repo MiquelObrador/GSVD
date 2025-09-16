@@ -1,0 +1,1 @@
+{"model_name": "llama-7b", "dataset_name": "winogrande", "accuracy": {"winogrande": {"alias": "winogrande", "acc,none": 0.6992896606156275, "acc_stderr,none": 0.012888010494704722}}}

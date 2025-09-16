@@ -1,1 +1,1 @@
-{"model_name": "gsvd_llama-7b_r0.4_g50_cb10", "dataset_name": "openbookqa", "accuracy": {"openbookqa": {"alias": "openbookqa", "acc,none": 0.154, "acc_stderr,none": 0.016158285192455348, "acc_norm,none": 0.258, "acc_norm_stderr,none": 0.01958671178521584}}}
+{"model_name": "gsvd_llama-7b_r0.4_g50_cb10", "dataset_name": "openbookqa", "accuracy": {"openbookqa": {"alias": "openbookqa", "acc,none": 0.164, "acc_stderr,none": 0.016575811142446707, "acc_norm,none": 0.282, "acc_norm_stderr,none": 0.020143572847290795}}}

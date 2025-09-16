@@ -1,0 +1,1 @@
+{"model_name": "llama-7b", "dataset_name": "openbookqa", "accuracy": {"openbookqa": {"alias": "openbookqa", "acc,none": 0.344, "acc_stderr,none": 0.02126575803797874, "acc_norm,none": 0.444, "acc_norm_stderr,none": 0.022242244375731024}}}

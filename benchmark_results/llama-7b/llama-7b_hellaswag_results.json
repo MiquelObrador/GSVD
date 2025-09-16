@@ -1,0 +1,1 @@
+{"model_name": "llama-7b", "dataset_name": "hellaswag", "accuracy": {"hellaswag": {"alias": "hellaswag", "acc,none": 0.5696076478789086, "acc_stderr,none": 0.004941191607317915, "acc_norm,none": 0.7619996016729735, "acc_norm_stderr,none": 0.004249890403493427}}}

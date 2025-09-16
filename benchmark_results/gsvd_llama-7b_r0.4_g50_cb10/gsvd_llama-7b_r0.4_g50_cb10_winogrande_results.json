@@ -1,1 +1,1 @@
-{"model_name": "gsvd_llama-7b_r0.4_g50_cb10", "dataset_name": "winogrande", "accuracy": {"winogrande": {"alias": "winogrande", "acc,none": 0.531965272296764, "acc_stderr,none": 0.014023739221166382}}}
+{"model_name": "gsvd_llama-7b_r0.4_g50_cb10", "dataset_name": "winogrande", "accuracy": {"winogrande": {"alias": "winogrande", "acc,none": 0.5295974743488555, "acc_stderr,none": 0.01402784382784009}}}

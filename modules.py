@@ -186,6 +186,82 @@ class SVDLinearLayer(nn.Module):
             x = x.unsqueeze(0)
         return self.u_linear(self.vt_linear(x))
     
+class SVDLinearLayerDynamicSigma(nn.Module):
+    def __init__(self, W, low_rank, bias=None, from_savepoint=False):
+        """
+        Args:
+            vt_parameter: Tensor of shape (low_rank, in_features) for Vt matrix.
+            sigma_parameter: Tensor of shape (low_rank,) for singular values.
+            u_parameter: Tensor of shape (out_features, low_rank) for U matrix.
+            bias: Optional bias tensor of shape (out_features,).
+            from_savepoint: If True, initializes the layer with random weights.
+        """
+        
+        super(SVDLinearLayerDynamicSigma, self).__init__()
+        
+        if from_savepoint:
+            U = torch.zeros((W.shape[0], low_rank), device=W.device)
+            S = torch.zeros((low_rank,), device=W.device)
+            VT = torch.zeros((low_rank, W.shape[1]), device=W.device)
+
+        else:
+            W = W.float()
+            U, S, VT = torch.linalg.svd(W, full_matrices=False)
+
+            U = U[:, :low_rank]
+            S = S[:low_rank]
+            VT = VT[:low_rank, :]
+        
+        self.vt_linear = nn.Linear(VT.shape[1], 
+                                   VT.shape[0], 
+                                   bias=False)
+        
+        self.sigma = nn.Parameter(S)
+        
+        self.u_linear = nn.Linear(U.shape[1], 
+                                   U.shape[0], 
+                                   bias=True if bias is not None else False)
+        
+        self.vt_linear.weight.data.copy_(VT)
+        if bias is not None:
+            self.u_linear.bias.data.copy_(bias)
+        self.u_linear.weight.data.copy_(U)
+
+        #self.DRA = nn.Parameter(torch.ones(S.shape[0]) * 3)  # Initialize DRA to a value like 3.0
+        self.gating_layer = nn.Linear(low_rank, low_rank)
+
+        #self.DRA.requires_grad = True
+        self.gating_layer.weight.requires_grad = True
+        self.vt_linear.weight.requires_grad = False
+        self.u_linear.weight.requires_grad = False
+        self.sigma.requires_grad = False
+        
+        del W, U, S, VT
+
+    def forward(self, x):
+        """ 
+        Args:
+            x: Tensor of shape (batch_size, seq_len, in_features) or (seq_len, in_features)
+        Returns:
+            Tensor of shape (batch_size, seq_len, out_features)
+        """
+        if x.dim() == 2:  # Add batch dimension if missing.
+            x = x.unsqueeze(0)
+
+        #vt_out = self.vt_linear(x)
+        # Apply dynamic adjustment to singular values
+        #adjusted_vt_out = vt_out @ torch.diag(self.sigma * torch.sigmoid(self.DRA))
+        #return self.u_linear(adjusted_vt_out)
+
+        vt_out = self.vt_linear(x)  # Shape: (batch_size, seq_len, low_rank)
+        scaling_factor = torch.sigmoid(self.gating_layer(self.sigma))  # Shape: (low_rank,)
+        adjusted_vt_out = vt_out @ torch.diag(self.sigma * scaling_factor)  # Shape: (batch_size, seq_len, low_rank)
+        return self.u_linear(adjusted_vt_out)  # Shape: (batch_size, seq_len, out_features)
+    
+    def extra_repr(self) -> str:
+        # Customize what gets shown when you print the module
+        return f"sigma_shape={tuple(self.sigma.shape)}, DRA_shape={tuple(self.DRA.shape)}"
+    
 class WeightedMSELoss(nn.Module):
     """
     Mean Squared Error loss with optional per-feature weighting.

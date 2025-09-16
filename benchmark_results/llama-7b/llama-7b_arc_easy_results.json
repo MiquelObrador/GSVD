@@ -1,0 +1,1 @@
+{"model_name": "llama-7b", "dataset_name": "arc_easy", "accuracy": {"arc_easy": {"alias": "arc_easy", "acc,none": 0.7529461279461279, "acc_stderr,none": 0.008850055161459239, "acc_norm,none": 0.7285353535353535, "acc_norm_stderr,none": 0.009125362970360623}}}

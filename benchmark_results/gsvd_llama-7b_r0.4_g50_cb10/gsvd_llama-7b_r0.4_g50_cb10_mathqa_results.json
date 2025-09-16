@@ -1,1 +1,1 @@
-{"model_name": "gsvd_llama-7b_r0.4_g50_cb10", "dataset_name": "mathqa", "accuracy": {"mathqa": {"alias": "mathqa", "acc,none": 0.21742043551088777, "acc_stderr,none": 0.007551183476415314, "acc_norm,none": 0.21708542713567838, "acc_norm_stderr,none": 0.007546978526071601}}}
+{"model_name": "gsvd_llama-7b_r0.4_g50_cb10", "dataset_name": "mathqa", "accuracy": {"mathqa": {"alias": "mathqa", "acc,none": 0.22680067001675042, "acc_stderr,none": 0.007665994295006099, "acc_norm,none": 0.2284757118927973, "acc_norm_stderr,none": 0.007685912066383918}}}

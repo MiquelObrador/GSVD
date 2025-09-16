@@ -1,0 +1,1 @@
+{"model_name": "llama-7b", "dataset_name": "mathqa", "accuracy": {"mathqa": {"alias": "mathqa", "acc,none": 0.2710217755443886, "acc_stderr,none": 0.008136918413120767, "acc_norm,none": 0.2649916247906198, "acc_norm_stderr,none": 0.00807909674092839}}}

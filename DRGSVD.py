@@ -3,13 +3,15 @@ from torch import nn
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from utils import (replace_module_by_name, get_calib_train_data,
                    get_truncate, get_unique_path, load_eval_tokenized_dataset)
-from modules import SVDLinearLayer, WeightedMSELoss, HybridLoss
+from modules import SVDLinearLayer, HybridLoss
 from tqdm import tqdm
 import os
 import argparse
 import csv
 import gc # --- CHANGE: Import garbage collector
 from transformers.activations import ACT2FN
+import json
+import math
 
 # --- Argument Parsing ---
 parser = argparse.ArgumentParser(description="Compress a Hugging Face model using GSVD.")
@@ -36,6 +38,9 @@ parser.add_argument('--grads-path', type=str, default=None,
 parser.add_argument('--superweight', type=str, default="",
                     help='Comma-separated list of module-name substrings to skip compression (SuperWeight). '
                          'Example: "layers.2.mlp.down_proj,mlp.gate_proj"')
+parser.add_argument('--ranks-json', type=str, default=None,
+                    help='Path to JSON file with per-layer ranks (key: module name, value: rank).')
+
 
 args = parser.parse_args()
 
@@ -153,6 +158,62 @@ if GRADS_PATH is not None:
         grads = torch.load(f)
 else:
     print("No precomputed gradients provided, using default behavior.")
+    
+# Load per-layer ranks if provided
+RANKS_MAP = {}
+if args.ranks_json is not None and os.path.exists(args.ranks_json):
+    with open(args.ranks_json, 'r') as f:
+        raw = json.load(f)
+    # normalize: convert values to ints
+    for k, v in raw.items():
+        try:
+            RANKS_MAP[k] = int(math.ceil(float(v)))
+        except Exception:
+            # fallback if value is not parseable
+            RANKS_MAP[k] = None
+    print(f"Loaded ranks for {len(RANKS_MAP)} modules from {args.ranks_json}")
+else:
+    if args.ranks_json is not None:
+        print(f"Ranks JSON not found: {args.ranks_json} (continuing with ratio-based truncation)")
+        
+def resolve_low_rank_for_layer(name, in_features, out_features, default_ratio=RATIO, SEQLEN=SEQLEN):
+    """
+    Try to obtain a low-rank value for `name` from RANKS_MAP.
+    Matching strategy:
+      1) exact key match
+      2) suffix match (json_key endswith name) to be robust to prefixes
+      3) fallback to get_truncate(in_features, out_features, default_ratio)
+    Ensures rank is at least 1 and <= min(in_features, out_features).
+    """
+    max_rank = min(in_features, out_features)
+    rank = None
+    # exact match
+    if name in RANKS_MAP and RANKS_MAP[name] is not None:
+        gamma = RANKS_MAP[name]
+        m,n = out_features, in_features
+        cut = min(n, m)/SEQLEN
+        if cut > 1:
+            rank = min(m, n, max(1, cut*math.ceil(gamma)))
+        else:
+            rank = min(m, n, max(1, math.ceil(gamma)))
+    else:
+        # try suffix matches (prefer the shortest matching suffix)
+        for k, v in RANKS_MAP.items():
+            if v is None:
+                continue
+            if k.endswith(name) or name.endswith(k):
+                rank = v
+                break
+    if rank is None:
+        # fallback to your existing heuristic
+        rank = get_truncate(in_features, out_features, default_ratio)
+    # sanitize
+    try:
+        rank = int(rank)
+    except Exception:
+        rank = int(get_truncate(in_features, out_features, default_ratio))
+    rank = max(1, min(rank, max_rank))
+    return rank
 
 print(" Starting GSVD compression...")
 
@@ -211,7 +272,7 @@ for name in tqdm(reversed(linear_layer_names), desc="Modules", total=len(linear_
     b = module.bias.data.clone().detach().to(DEVICE) if module.bias is not None else None
 
     out_features, in_features = W.shape
-    low_rank = get_truncate(in_features, out_features, RATIO)
+    low_rank = resolve_low_rank_for_layer(name, in_features, out_features, default_ratio=RATIO, SEQLEN=SEQLEN)
     print(f"Applying GSVD to {name} with low rank: {low_rank}")
 
     U, S, VT = torch.linalg.svd(W, full_matrices=False)

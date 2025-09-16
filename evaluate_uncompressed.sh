@@ -2,8 +2,6 @@
 set -euo pipefail
 
 MODEL_BASE="huggyllama/llama-7b"
-MODEL_PATH="results/drgsvd_hmsecos/gsvd_llama-7b_r0.4_g50_cb10.pt"
-LOW_RANK_DICT_PATH="dynamic_ranks/llama7b_0.4.json"
 
 # Accuracy evaluations (no batch size needed)
 ACC_DATASETS=(
@@ -18,12 +16,10 @@ ACC_DATASETS=(
 
 for DS in "${ACC_DATASETS[@]}"; do
   echo "=== Evaluating accuracy on ${DS} ==="
-  python evaluate.py \
+  python evaluate_uncompressed.py \
     --model_base "$MODEL_BASE" \
-    --model_path "$MODEL_PATH" \
     --eval_metric "accuracy" \
-    --eval_dataset "$DS" \
-    --low_rank_dict_path "$LOW_RANK_DICT_PATH"
+    --eval_dataset "$DS"
   echo
 done
 
@@ -31,13 +27,11 @@ done
 PPL_DATASETS=("c4" "ptb")
 for DS in "${PPL_DATASETS[@]}"; do
   echo "=== Evaluating perplexity on ${DS} ==="
-  python evaluate.py \
+  python evaluate_uncompressed.py \
     --model_base "$MODEL_BASE" \
-    --model_path "$MODEL_PATH" \
     --eval_metric "ppl" \
     --eval_dataset "$DS" \
-    --batch_size 8 \
-    --low_rank_dict_path "$LOW_RANK_DICT_PATH"
+    --batch_size 4
   echo
 done
 

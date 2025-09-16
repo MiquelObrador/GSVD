@@ -1,1 +1,1 @@
-{"model_name": "gsvd_llama-7b_r0.4_g50_cb10", "dataset_name": "hellaswag", "accuracy": {"hellaswag": {"alias": "hellaswag", "acc,none": 0.2749452300338578, "acc_stderr,none": 0.004455741817861897, "acc_norm,none": 0.2945628360884286, "acc_norm_stderr,none": 0.004549143750428452}}}
+{"model_name": "gsvd_llama-7b_r0.4_g50_cb10", "dataset_name": "hellaswag", "accuracy": {"hellaswag": {"alias": "hellaswag", "acc,none": 0.2817167894841665, "acc_stderr,none": 0.004489166767430693, "acc_norm,none": 0.3180641306512647, "acc_norm_stderr,none": 0.004647727222445358}}}

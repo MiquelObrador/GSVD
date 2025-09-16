@@ -2,16 +2,16 @@
 
 # This script runs the GSVD algorithm on a given dataset.
 
-python GSVD.py \
+python DRGSVD.py \
     --ratio 0.4 \
     --calib-samples 256 \
     --calib-dataset "wikitext2" \
     --calib-batch-size 10 \
     --gradient-epochs 50 \
     --batch-size 8 \
-    --output-dir-base "results/gsvd_hmsecos_sw" \
+    --output-dir-base "results/drgsvd_hmsecos" \
     --grads-path "grads/llama7b_gradsppl_out.pt" \
-    #--superweight "layers.2.mlp.down_proj" \
+    --ranks-json "dynamic_ranks/llama7b_0.4.json" \
 
 # set -euo pipefail
 
@@ -21,7 +21,7 @@ python GSVD.py \
 #   python WGSVD.py \
 #     --gradient-iters 500 \
 #     --matrix-iters 1 \
-#     --ratio "$ratio" \
+#     --ratio "$ratio" \ 
 #     --calib-samples 256
 #   echo "[$(date +'%Y-%m-%d %H:%M:%S')] Finished ratio $ratio"
 #   echo "---------------------------------------------------------------"

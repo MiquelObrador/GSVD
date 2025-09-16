@@ -1,0 +1,1 @@
+{"model_name": "llama-7b", "dataset_name": "arc_challenge", "accuracy": {"arc_challenge": {"alias": "arc_challenge", "acc,none": 0.4180887372013652, "acc_stderr,none": 0.014413988396996077, "acc_norm,none": 0.44795221843003413, "acc_norm_stderr,none": 0.01453201149821167}}}

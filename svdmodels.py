@@ -6,12 +6,14 @@ from modules import SVDLinearLayer
 from utils import replace_module_by_name, get_truncate
 from tqdm import tqdm
 from quantize_llm import quantize_linear_layer
+import math
 
 class SVDModel(nn.Module):
-    def __init__(self, model, ratio=0.6):
+    def __init__(self, model, ratio=0.6, low_rank_dict=None):
         super(SVDModel, self).__init__()
         self.model = model
         self.ratio = ratio
+        self.low_rank_dict = low_rank_dict
 
     def forward(self, *args, **kwargs):
         return self.model(*args, **kwargs)
@@ -20,8 +22,9 @@ class SVDModel(nn.Module):
     def load_model(cls, model, ratio=0.6, 
                    model_path=None, 
                    quantization_bits=None, 
-                   ratios_dict=None):
-        instance = cls(model, ratio)
+                   low_rank_dict=None,
+                    SEQLEN=2048):
+        instance = cls(model, ratio, low_rank_dict)
         # Replace original modules with SVD modules
         for name, module in tqdm(model.named_modules(), desc="Replacing modules", total=len(list(model.named_modules()))):
             if isinstance(module, nn.Linear):
@@ -34,16 +37,19 @@ class SVDModel(nn.Module):
                 
                 out_features, in_features = W.shape
                 
-                if ratios_dict is not None:
-                    # Get the ratio for the current layer from the dictionary
-                    ratio = ratios_dict.get(name, ratio)
+                # Determine the low rank
+                if low_rank_dict is not None and name in low_rank_dict:
+                    gamma = low_rank_dict[name]
+                    m,n = out_features, in_features
+                    cut = min(n,m) / SEQLEN
+                    if cut > 1:
+                        low_rank = int(min(m, n, max(1, cut*math.ceil(gamma))))
+                    else:
+                        low_rank = int(min(m, n, max(1, math.ceil(gamma))))
                 else:
-                    # Use the default ratio
-                    ratio = ratio
-                
-                low_rank = get_truncate(in_features, out_features, ratio)
+                    low_rank = get_truncate(in_features, out_features, ratio)
                 # SVD needs a vt parameter and a u_parameter, we can create a dummy ones to initialize the SVD layer and the load the weights later
-                # Create dummy parameters for SVD
+                # Create dummy parameters for SVD layer
                 vt_parameter = torch.zeros(low_rank, in_features)
                 u_parameter = torch.zeros(out_features, low_rank)
                 # Create the SVD layer
@@ -72,8 +78,10 @@ class SVDModel(nn.Module):
                     
                     # Replace the original layer with the quantized layer
                     replace_module_by_name(model, name, qlayer)
-        
-        state_dict = torch.load(model_path)
+        if low_rank_dict is not None:
+            state_dict = torch.load(model_path)["model_state_dict"]
+        else:
+            state_dict = torch.load(model_path)
         instance.model.load_state_dict(state_dict)
         instance.model.eval()
         
