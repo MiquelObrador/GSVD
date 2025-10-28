@@ -78,10 +78,13 @@ class SVDModel(nn.Module):
                     
                     # Replace the original layer with the quantized layer
                     replace_module_by_name(model, name, qlayer)
-        if low_rank_dict is not None:
-            state_dict = torch.load(model_path)["model_state_dict"]
+        model_file = torch.load(model_path)
+        if 'model_state_dict' in model_file:
+            state_dict = model_file['model_state_dict']
         else:
-            state_dict = torch.load(model_path)
+            state_dict = model_file
+        del model_file  # Free up memory
+        # Load the state dict into the model
         instance.model.load_state_dict(state_dict)
         instance.model.eval()
         

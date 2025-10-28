@@ -1,0 +1,17 @@
+{
+  "model_name": "gsvd_llama-7b_r0.6_g50_cb10_lora_finetuned_models",
+  "base_model": "huggyllama/llama-7b",
+  "svd_model_path": "results/llama7b/gsvd_hmsecos/gsvd_llama-7b_r0.6_g50_cb10.pt",
+  "lora_adapter_path": "finetuned_models/finetuned_models",
+  "dataset_name": "mathqa",
+  "accuracy": {
+    "mathqa": {
+      "alias": "mathqa",
+      "acc,none": 0.2442211055276382,
+      "acc_stderr,none": 0.007864834115502725,
+      "acc_norm,none": 0.24757118927973198,
+      "acc_norm_stderr,none": 0.007901023441324383
+    }
+  },
+  "eval_metric": "accuracy"
+}

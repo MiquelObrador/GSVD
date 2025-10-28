@@ -1,0 +1,1 @@
+{"model_name": "gsvd_Mistral-7B-v0.1_r0.6_g50_cb10", "dataset_name": "arc_easy", "accuracy": {"arc_easy": {"alias": "arc_easy", "acc,none": 0.3451178451178451, "acc_stderr,none": 0.009755139387152037, "acc_norm,none": 0.33754208754208753, "acc_norm_stderr,none": 0.009703117820790301}}}

@@ -15,6 +15,8 @@ from transformers.activations import ACT2FN
 parser = argparse.ArgumentParser(description="Compress a Hugging Face model using GSVD.")
 parser.add_argument('--model-name', type=str, default="huggyllama/llama-7b",
                     help='Hugging Face model identifier (default: huggyllama/llama-7b)')
+parser.add_argument('--seqlen', type=int, default=2048,
+                    help='Sequence length for the model (default: 2048)')
 parser.add_argument('--ratio', type=float, default=0.6,
                     help='Compression ratio target for SVD (default: 0.6)')
 parser.add_argument('--calib-samples', type=int, default=256,
@@ -53,6 +55,7 @@ BATCH_SIZE = args.batch_size
 OUTPUT_DIR_BASE = args.output_dir_base
 SEED = args.seed
 GRADS_PATH = args.grads_path
+SEQLEN = args.seqlen
 SUPERWEIGHTS = set([s.strip() for s in args.superweight.split(',') if s.strip()])
 # Create output directory if it doesn't exist
 if not os.path.exists(f"{OUTPUT_DIR_BASE}"):
@@ -94,7 +97,7 @@ activation_fn = ACT2FN[model.config.hidden_act] if hasattr(model.config, "hidden
 print(f"Activation Function: {getattr(activation_fn, '__name__', activation_fn.__class__.__name__)}")
 
 # Securely get sequence length from config, fallback to 2048 if not present
-SEQLEN = getattr(model.config, "max_position_embeddings", 2048)
+# SEQLEN = getattr(model.config, "max_position_embeddings", 2048)
 print(f"Sequence Length: {SEQLEN}")
 
 print("Loading calibration data...")

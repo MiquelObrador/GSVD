@@ -1,0 +1,17 @@
+{
+  "model_name": "gsvd_llama-7b_r0.6_g50_cb10_lora_finetuned_models",
+  "base_model": "huggyllama/llama-7b",
+  "svd_model_path": "results/llama7b/gsvd_hmsecos/gsvd_llama-7b_r0.6_g50_cb10.pt",
+  "lora_adapter_path": "finetuned_models/finetuned_models",
+  "dataset_name": "openbookqa",
+  "accuracy": {
+    "openbookqa": {
+      "alias": "openbookqa",
+      "acc,none": 0.27,
+      "acc_stderr,none": 0.019874354831287487,
+      "acc_norm,none": 0.394,
+      "acc_norm_stderr,none": 0.02187429930168925
+    }
+  },
+  "eval_metric": "accuracy"
+}

@@ -1,0 +1,1 @@
+{"model_name": "gsvd_Mistral-7B-v0.1_r0.6_g50_cb10", "dataset_name": "piqa", "accuracy": {"piqa": {"alias": "piqa", "acc,none": 0.5631120783460283, "acc_stderr,none": 0.011572517929968272, "acc_norm,none": 0.5571273122959739, "acc_norm_stderr,none": 0.011589430503509105}}}

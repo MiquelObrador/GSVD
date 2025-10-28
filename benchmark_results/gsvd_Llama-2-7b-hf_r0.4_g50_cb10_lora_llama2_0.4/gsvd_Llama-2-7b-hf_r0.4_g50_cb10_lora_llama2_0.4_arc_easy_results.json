@@ -1,0 +1,17 @@
+{
+  "model_name": "gsvd_Llama-2-7b-hf_r0.4_g50_cb10_lora_llama2_0.4",
+  "base_model": "meta-llama/Llama-2-7b-hf",
+  "svd_model_path": "results/llama2/gsvd_Llama-2-7b-hf_r0.4_g50_cb10.pt",
+  "lora_adapter_path": "finetuned_models/llama2_0.4",
+  "dataset_name": "arc_easy",
+  "accuracy": {
+    "arc_easy": {
+      "alias": "arc_easy",
+      "acc,none": 0.494949494949495,
+      "acc_stderr,none": 0.01025926010256586,
+      "acc_norm,none": 0.45496632996632996,
+      "acc_norm_stderr,none": 0.010218084454602601
+    }
+  },
+  "eval_metric": "accuracy"
+}

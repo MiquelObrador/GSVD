@@ -12,3 +12,4 @@ datasets/
 notebooks/
 cache/
 .vscode/
+finetuned_models/

@@ -1,0 +1,1 @@
+{"model_name": "gsvd_Mistral-7B-v0.1_r0.6_g50_cb10", "dataset_name": "openbookqa", "accuracy": {"openbookqa": {"alias": "openbookqa", "acc,none": 0.124, "acc_stderr,none": 0.014754096608517554, "acc_norm,none": 0.278, "acc_norm_stderr,none": 0.02005583388807092}}}

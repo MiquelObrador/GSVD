@@ -1,0 +1,9 @@
+{
+  "model_name": "gsvd_llama-7b_r0.6_g50_cb10_lora_finetuned_models",
+  "base_model": "huggyllama/llama-7b",
+  "svd_model_path": "results/llama7b/gsvd_hmsecos/gsvd_llama-7b_r0.6_g50_cb10.pt",
+  "lora_adapter_path": "finetuned_models/finetuned_models",
+  "dataset_name": "c4",
+  "perplexity": 14.8984375,
+  "eval_metric": "ppl"
+}

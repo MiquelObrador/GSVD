@@ -1,0 +1,17 @@
+{
+  "model_name": "gsvd_Llama-3.1-8B_r0.4_g50_cb10_lora_llama3_0.4",
+  "base_model": "meta-llama/Llama-3.1-8B",
+  "svd_model_path": "results/llama3/gsvd_Llama-3.1-8B_r0.4_g50_cb10.pt",
+  "lora_adapter_path": "finetuned_models/llama3_0.4",
+  "dataset_name": "openbookqa",
+  "accuracy": {
+    "openbookqa": {
+      "alias": "openbookqa",
+      "acc,none": 0.15,
+      "acc_stderr,none": 0.015984712135164926,
+      "acc_norm,none": 0.27,
+      "acc_norm_stderr,none": 0.01987435483128749
+    }
+  },
+  "eval_metric": "accuracy"
+}

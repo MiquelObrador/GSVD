@@ -1,0 +1,1 @@
+{"model_name": "gsvd_Mistral-7B-v0.1_r0.6_g50_cb10", "dataset_name": "arc_challenge", "accuracy": {"arc_challenge": {"alias": "arc_challenge", "acc,none": 0.1885665529010239, "acc_stderr,none": 0.011430897647675815, "acc_norm,none": 0.2158703071672355, "acc_norm_stderr,none": 0.01202297536003068}}}

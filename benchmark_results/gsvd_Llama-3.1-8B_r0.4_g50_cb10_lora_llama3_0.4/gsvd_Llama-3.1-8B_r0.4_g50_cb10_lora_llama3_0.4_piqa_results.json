@@ -1,0 +1,17 @@
+{
+  "model_name": "gsvd_Llama-3.1-8B_r0.4_g50_cb10_lora_llama3_0.4",
+  "base_model": "meta-llama/Llama-3.1-8B",
+  "svd_model_path": "results/llama3/gsvd_Llama-3.1-8B_r0.4_g50_cb10.pt",
+  "lora_adapter_path": "finetuned_models/llama3_0.4",
+  "dataset_name": "piqa",
+  "accuracy": {
+    "piqa": {
+      "alias": "piqa",
+      "acc,none": 0.5963003264417845,
+      "acc_stderr,none": 0.011447407541749085,
+      "acc_norm,none": 0.5903155603917302,
+      "acc_norm_stderr,none": 0.011473932007187607
+    }
+  },
+  "eval_metric": "accuracy"
+}

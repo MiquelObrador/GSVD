@@ -1,0 +1,15 @@
+{
+  "model_name": "gsvd_Llama-2-7b-hf_r0.4_g50_cb10_lora_llama2_0.4",
+  "base_model": "meta-llama/Llama-2-7b-hf",
+  "svd_model_path": "results/llama2/gsvd_Llama-2-7b-hf_r0.4_g50_cb10.pt",
+  "lora_adapter_path": "finetuned_models/llama2_0.4",
+  "dataset_name": "winogrande",
+  "accuracy": {
+    "winogrande": {
+      "alias": "winogrande",
+      "acc,none": 0.5722178374112076,
+      "acc_stderr,none": 0.013905134013839946
+    }
+  },
+  "eval_metric": "accuracy"
+}

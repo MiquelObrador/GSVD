@@ -1,0 +1,17 @@
+{
+  "model_name": "gsvd_Llama-3.1-8B_r0.4_g50_cb10_lora_llama3_0.4",
+  "base_model": "meta-llama/Llama-3.1-8B",
+  "svd_model_path": "results/llama3/gsvd_Llama-3.1-8B_r0.4_g50_cb10.pt",
+  "lora_adapter_path": "finetuned_models/llama3_0.4",
+  "dataset_name": "arc_easy",
+  "accuracy": {
+    "arc_easy": {
+      "alias": "arc_easy",
+      "acc,none": 0.4234006734006734,
+      "acc_stderr,none": 0.010138671005289052,
+      "acc_norm,none": 0.3792087542087542,
+      "acc_norm_stderr,none": 0.009955891668865569
+    }
+  },
+  "eval_metric": "accuracy"
+}

@@ -1,9 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
-MODEL_BASE="huggyllama/llama-7b"
-MODEL_PATH="results/drgsvd_hmsecos/gsvd_llama-7b_r0.4_g50_cb10.pt"
-LOW_RANK_DICT_PATH="dynamic_ranks/llama7b_0.4.json"
+MODEL_BASE="meta-llama/Llama-2-7b-hf"
+MODEL_PATH="finetuned_models/checkpoint-100/gsvd_Llama-2-7b-hf_r0.6_g50_cb10.pt"
 
 # Accuracy evaluations (no batch size needed)
 ACC_DATASETS=(
@@ -22,13 +21,12 @@ for DS in "${ACC_DATASETS[@]}"; do
     --model_base "$MODEL_BASE" \
     --model_path "$MODEL_PATH" \
     --eval_metric "accuracy" \
-    --eval_dataset "$DS" \
-    --low_rank_dict_path "$LOW_RANK_DICT_PATH"
+    --eval_dataset "$DS"
   echo
 done
 
 # Perplexity evaluations (with batch_size=8)
-PPL_DATASETS=("c4" "ptb")
+PPL_DATASETS=("c4" "ptb" "wikitext2")
 for DS in "${PPL_DATASETS[@]}"; do
   echo "=== Evaluating perplexity on ${DS} ==="
   python evaluate.py \
@@ -36,8 +34,7 @@ for DS in "${PPL_DATASETS[@]}"; do
     --model_path "$MODEL_PATH" \
     --eval_metric "ppl" \
     --eval_dataset "$DS" \
-    --batch_size 8 \
-    --low_rank_dict_path "$LOW_RANK_DICT_PATH"
+    --batch_size 8
   echo
 done
 

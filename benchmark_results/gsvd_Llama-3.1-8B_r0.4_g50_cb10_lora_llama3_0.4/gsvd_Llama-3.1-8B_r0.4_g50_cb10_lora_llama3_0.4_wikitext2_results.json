@@ -1,0 +1,9 @@
+{
+  "model_name": "gsvd_Llama-3.1-8B_r0.4_g50_cb10_lora_llama3_0.4",
+  "base_model": "meta-llama/Llama-3.1-8B",
+  "svd_model_path": "results/llama3/gsvd_Llama-3.1-8B_r0.4_g50_cb10.pt",
+  "lora_adapter_path": "finetuned_models/llama3_0.4",
+  "dataset_name": "wikitext2",
+  "perplexity": 79.4375,
+  "eval_metric": "ppl"
+}

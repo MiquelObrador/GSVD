@@ -1,0 +1,17 @@
+{
+  "model_name": "gsvd_Llama-2-7b-hf_r0.4_g50_cb10_lora_llama2_0.4",
+  "base_model": "meta-llama/Llama-2-7b-hf",
+  "svd_model_path": "results/llama2/gsvd_Llama-2-7b-hf_r0.4_g50_cb10.pt",
+  "lora_adapter_path": "finetuned_models/llama2_0.4",
+  "dataset_name": "hellaswag",
+  "accuracy": {
+    "hellaswag": {
+      "alias": "hellaswag",
+      "acc,none": 0.36427006572395937,
+      "acc_stderr,none": 0.004802413919932673,
+      "acc_norm,none": 0.44811790479984065,
+      "acc_norm_stderr,none": 0.0049628462061254985
+    }
+  },
+  "eval_metric": "accuracy"
+}

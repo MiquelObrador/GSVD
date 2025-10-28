@@ -1,0 +1,1 @@
+{"model_name": "gsvd_Mistral-7B-v0.1_r0.6_g50_cb10", "dataset_name": "hellaswag", "accuracy": {"hellaswag": {"alias": "hellaswag", "acc,none": 0.27753435570603463, "acc_stderr,none": 0.0044686721389109296, "acc_norm,none": 0.31876120294762, "acc_norm_stderr,none": 0.0046504387817452785}}}

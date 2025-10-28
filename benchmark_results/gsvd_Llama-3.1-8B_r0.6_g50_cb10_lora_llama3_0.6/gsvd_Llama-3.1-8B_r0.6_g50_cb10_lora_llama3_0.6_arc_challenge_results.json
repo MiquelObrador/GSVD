@@ -1,0 +1,17 @@
+{
+  "model_name": "gsvd_Llama-3.1-8B_r0.6_g50_cb10_lora_llama3_0.6",
+  "base_model": "meta-llama/Llama-3.1-8B",
+  "svd_model_path": "results/llama3/gsvd_Llama-3.1-8B_r0.6_g50_cb10.pt",
+  "lora_adapter_path": "finetuned_models/llama3_0.6",
+  "dataset_name": "arc_challenge",
+  "accuracy": {
+    "arc_challenge": {
+      "alias": "arc_challenge",
+      "acc,none": 0.28668941979522183,
+      "acc_stderr,none": 0.013214986329274776,
+      "acc_norm,none": 0.302901023890785,
+      "acc_norm_stderr,none": 0.013428241573185349
+    }
+  },
+  "eval_metric": "accuracy"
+}

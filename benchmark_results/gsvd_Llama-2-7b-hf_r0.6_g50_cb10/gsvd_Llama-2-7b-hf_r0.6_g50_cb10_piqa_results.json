@@ -1,0 +1,1 @@
+{"model_name": "gsvd_Llama-2-7b-hf_r0.6_g50_cb10", "dataset_name": "piqa", "accuracy": {"piqa": {"alias": "piqa", "acc,none": 0.588139281828074, "acc_stderr,none": 0.011483141106304395, "acc_norm,none": 0.5826985854189336, "acc_norm_stderr,none": 0.011505151244333234}}}
